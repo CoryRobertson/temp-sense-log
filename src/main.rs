@@ -1,6 +1,9 @@
-use std::io::Read;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+use chrono::{Datelike, DateTime, Local, Timelike};
 
 fn main() {
     // println!("Hello, world!");
@@ -23,6 +26,7 @@ fn main() {
 
         let mut temp = 0.0;
         let mut humid = 0.0;
+        let mut last_log = SystemTime::now();
 
         loop {
             let mut serial_buf: Vec<u8> = vec![0; 32];
@@ -52,7 +56,15 @@ fn main() {
                     }
                     println!("Temp: {}", temp);
                     println!("Humid: {}", humid);
+                    println!();
                     sleep(Duration::from_secs(1));
+
+                    if SystemTime::now().duration_since(last_log).unwrap().as_secs() > 60 {
+                        last_log = SystemTime::now();
+                        let stat = EnvStat{temp, humid};
+                        print_stats_to_file(stat);
+                    }
+
                 }
                 Err(_err) => {}
             }
@@ -60,3 +72,56 @@ fn main() {
     }
 }
 
+struct EnvStat {
+    temp: f64,
+    humid: f64,
+}
+
+fn print_stats_to_file(stat: EnvStat) {
+    let path = Path::new("env_log.log");
+    let display = path.display();
+    let date: DateTime<Local> = Local::now();
+    let file_name = "env_log.log";
+
+    let mut file = match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .append(true)
+        .open(file_name) {
+        Ok(f) => {f}
+        Err(e) => {
+            panic!("{},{}", e, display);
+        }
+    };
+    println!("{}",display);
+    let am_pm = match date.hour12().0 {
+        true => "PM",
+        false => "AM",
+    };
+
+    let time_format = format!(
+        "{}:{:02}:{:02}{}",
+        date.hour12().1,
+        date.minute(),
+        date.second(),
+        am_pm
+    );
+
+    let text = format!("Temperature: {}, Humidity: {}", stat.temp, stat.humid);
+
+    let full_text = format!(
+        "[{}-{}-{}: {}]\t{} \n",
+        date.year(),
+        date.month(),
+        date.day(),
+        time_format,
+        text
+    );
+
+    match file.write_all(full_text.as_bytes()) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("{}, {}", e, display);
+        }
+    };
+}
