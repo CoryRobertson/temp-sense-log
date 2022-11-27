@@ -1,5 +1,5 @@
 use chrono::{DateTime, Datelike, Local, Timelike};
-use std::fs::OpenOptions;
+use std::fs::{create_dir_all, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::thread::sleep;
@@ -102,15 +102,23 @@ fn get_timestamp_text(stat: &EnvStat) -> String {
 }
 
 fn print_stats_to_file(stat: EnvStat) {
-    let path = Path::new("env_log.csv");
-    let display = path.display();
-    let file_name = "env_log.csv";
+    let path_with_filename = Path::new("./log/env_log.csv");
+    let path_without_filename = Path::new("./log/");
+    let display = path_with_filename.display();
+    // let file_name = "env_log.csv";
+
+    match create_dir_all(path_without_filename) {
+        Ok(_) => {}
+        Err(err) => {
+            panic!("Could not create directories: '{}' in path_with_filename: {}",err,display);
+        }
+    }
 
     let mut file = match OpenOptions::new()
         .write(true)
         .create(true)
         .append(true)
-        .open(file_name)
+        .open(path_with_filename)
     {
         Ok(f) => f,
         Err(e) => {
@@ -131,7 +139,7 @@ fn print_stats_to_file(stat: EnvStat) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{get_timestamp_text, EnvStat};
+    use crate::{get_timestamp_text, EnvStat, print_stats_to_file};
 
     #[test]
     fn test_get_timestamp_text() {
@@ -140,5 +148,14 @@ mod tests {
             humid: 30.1,
         };
         print!("{}", get_timestamp_text(&stat));
+    }
+
+    #[test]
+    fn test_create_log_file() {
+        let stat = EnvStat {
+            temp: 24.3,
+            humid: 30.1,
+        };
+        print_stats_to_file(stat);
     }
 }
