@@ -95,7 +95,7 @@ fn get_timestamp_text(stat: &EnvStat) -> String {
         am_pm
     );
     let full_text = format!(
-        "{},{},{},{}\n",
+        "{} {},{},{}\n",
         month_day_year, time_format, stat.temp, stat.humid,
     );
     full_text
