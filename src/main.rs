@@ -1,9 +1,9 @@
+use chrono::{DateTime, Datelike, Local, Timelike};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
-use chrono::{Datelike, DateTime, Local, Timelike};
 
 fn main() {
     // println!("Hello, world!");
@@ -11,18 +11,15 @@ fn main() {
 
     // let conv = "T:21.3:H:33.9:";
 
-
-
     for port in ports {
         // println!("{:?}", port);
 
-        let mut com_port = serialport::new(port.port_name, 9600)
+        let mut com_port = serialport::new(port.port_name.clone(), 9600)
             .timeout(Duration::from_secs(5))
             .open()
             .expect("failed to read port");
 
-
-
+        println!("{}", port.port_name);
 
         let mut temp = 0.0;
         let mut humid = 0.0;
@@ -59,12 +56,16 @@ fn main() {
                     println!();
                     sleep(Duration::from_secs(1));
 
-                    if SystemTime::now().duration_since(last_log).unwrap().as_secs() > 60 {
+                    if SystemTime::now()
+                        .duration_since(last_log)
+                        .unwrap()
+                        .as_secs()
+                        > 60
+                    {
                         last_log = SystemTime::now();
-                        let stat = EnvStat{temp, humid};
+                        let stat = EnvStat { temp, humid };
                         print_stats_to_file(stat);
                     }
-
                 }
                 Err(_err) => {}
             }
@@ -77,46 +78,48 @@ struct EnvStat {
     humid: f64,
 }
 
-fn print_stats_to_file(stat: EnvStat) {
-    let path = Path::new("env_log.log");
-    let display = path.display();
+fn get_timestamp_text(stat: &EnvStat) -> String {
     let date: DateTime<Local> = Local::now();
-    let file_name = "env_log.log";
-
-    let mut file = match OpenOptions::new()
-        .write(true)
-        .create(true)
-        .append(true)
-        .open(file_name) {
-        Ok(f) => {f}
-        Err(e) => {
-            panic!("{},{}", e, display);
-        }
-    };
-    println!("{}",display);
+    // [2022-11-26: 5:19:53PM] Temperature: 24.4, Humidity: 31 old format
+    // 11/26/2022,5:19:53PM,24.4,31.0 new format
     let am_pm = match date.hour12().0 {
         true => "PM",
         false => "AM",
     };
-
+    let month_day_year = format!("{}/{}/{}", date.month(), date.day(), date.year());
     let time_format = format!(
-        "{}:{:02}:{:02}{}",
+        "{}:{:02}:{:02} {}",
         date.hour12().1,
         date.minute(),
         date.second(),
         am_pm
     );
-
-    let text = format!("Temperature: {}, Humidity: {}", stat.temp, stat.humid);
-
     let full_text = format!(
-        "[{}-{}-{}: {}]\t{} \n",
-        date.year(),
-        date.month(),
-        date.day(),
-        time_format,
-        text
+        "{},{},{},{}\n",
+        month_day_year, time_format, stat.temp, stat.humid,
     );
+    full_text
+}
+
+fn print_stats_to_file(stat: EnvStat) {
+    let path = Path::new("env_log.csv");
+    let display = path.display();
+    let file_name = "env_log.csv";
+
+    let mut file = match OpenOptions::new()
+        .write(true)
+        .create(true)
+        .append(true)
+        .open(file_name)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            panic!("{},{}", e, display);
+        }
+    };
+    println!("{}", display);
+
+    let full_text = get_timestamp_text(&stat);
 
     match file.write_all(full_text.as_bytes()) {
         Ok(_) => {}
@@ -124,4 +127,18 @@ fn print_stats_to_file(stat: EnvStat) {
             panic!("{}, {}", e, display);
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{get_timestamp_text, EnvStat};
+
+    #[test]
+    fn test_get_timestamp_text() {
+        let stat = EnvStat {
+            temp: 24.3,
+            humid: 30.1,
+        };
+        print!("{}", get_timestamp_text(&stat));
+    }
 }
