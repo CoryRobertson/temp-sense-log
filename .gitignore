@@ -86,3 +86,5 @@ fabric.properties
 .idea/caches/build_file_checksums.ser
 
 /log/env_log.csv
+/python_program/httpserver_code.py
+/.idea/csv-editor.xml
