@@ -1,12 +1,12 @@
-use std::env;
+use crate::EnvStatGetError::{ParseError, ParseErrorLength, UrlFailed};
 use chrono::{DateTime, Datelike, Local, Timelike};
 use std::fs::{create_dir_all, OpenOptions};
 use std::io::{Read, Write};
 use std::num::ParseFloatError;
 use std::path::Path;
-use std::thread::sleep;
+use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, SystemTime};
-use crate::EnvStatGetError::{ParseError, ParseErrorLength, UrlFailed};
+use std::{env, fs, thread};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -16,41 +16,14 @@ fn main() {
     let ports = serialport::available_ports().expect("no ports found");
 
     if wifi {
-        let ip = {
-            let mut output: String = String::new();
-            for (index, arg) in args.clone().iter().enumerate() {
-                if arg.contains("wifi") {
-                    output = args.get(index + 1).unwrap().clone();
-                }
-            }
-            output
-        };
+        let devices = read_device_list();
+        let mut threads: Vec<JoinHandle<()>> = vec![];
         println!("Running with wifi mode enabled");
-        println!("IP to connect to: {}", ip);
 
-        loop {
-            let mut last_temp = 0.0;
-            let mut last_humid = 0.0;
-            let mut last_log = SystemTime::now();
-            // let env_stat = match get_env_stat_from_url(&ip);
-            match get_env_stat_from_url(&ip) {
-                Ok(stat) => {
-                    last_log = SystemTime::now();
-                    last_temp = stat.temp;
-                    last_humid = stat.humid;
-                    println!("Temp: {}, Humid: {}", last_temp,last_humid);
-                    print_stats_to_file(stat);
-                }
-                Err(err) => {
-                    println!("error getting env stat from url: {:?}", err);
-                    let stat = EnvStat{ temp: last_temp, humid: last_humid };
-                    print_stats_to_file(stat);
-                }
-            }
-            sleep(Duration::from_secs(5));
+        for device in devices {
+            threads.push(spawn_stat_connection_thread(device.0, device.1));
         }
-    }
-    else {
+    } else {
         println!("Running with wifi mode disabled, looking for compatible serial device");
         for port in ports {
             // println!("{:?}", port);
@@ -105,7 +78,7 @@ fn main() {
                         {
                             last_log = SystemTime::now();
                             let stat = EnvStat { temp, humid };
-                            print_stats_to_file(stat);
+                            print_stats_to_file(stat, "env_log.csv");
                         }
                     }
                     Err(_err) => {}
@@ -113,7 +86,37 @@ fn main() {
             }
         }
     }
+}
 
+fn spawn_stat_connection_thread(ip: String, device_name: String) -> JoinHandle<()> {
+    thread::spawn(move || {
+        let ip = ip;
+        let device_name = device_name;
+        loop {
+            let mut last_temp = 0.0;
+            let mut last_humid = 0.0;
+            let mut last_log = SystemTime::now();
+            // let env_stat = match get_env_stat_from_url(&ip);
+            match get_env_stat_from_url(&ip) {
+                Ok(stat) => {
+                    last_log = SystemTime::now();
+                    last_temp = stat.temp;
+                    last_humid = stat.humid;
+                    println!("Temp: {}, Humid: {}", last_temp, last_humid);
+                    print_stats_to_file(stat, &device_name);
+                }
+                Err(err) => {
+                    println!("error getting env stat from url: {:?}", err);
+                    let stat = EnvStat {
+                        temp: last_temp,
+                        humid: last_humid,
+                    };
+                    print_stats_to_file(stat, &device_name);
+                }
+            }
+            sleep(Duration::from_secs(5));
+        }
+    })
 }
 
 #[derive(Debug)]
@@ -152,15 +155,15 @@ fn get_timestamp_text(stat: &EnvStat) -> String {
     full_text
 }
 
-fn get_env_stat_from_url(url: &str) -> Result<EnvStat,EnvStatGetError> {
+fn get_env_stat_from_url(url: &str) -> Result<EnvStat, EnvStatGetError> {
     // let resp = reqwest::blocking::get(url)?.text()?;
     let resp = match reqwest::blocking::get(url) {
-        Ok(res) => {
-            match res.text() {
-                Ok(text) => { text }
-                Err(_) => { return Err(UrlFailed);}
+        Ok(res) => match res.text() {
+            Ok(text) => text,
+            Err(_) => {
+                return Err(UrlFailed);
             }
-        }
+        },
         Err(_) => {
             return Err(UrlFailed);
         }
@@ -168,32 +171,36 @@ fn get_env_stat_from_url(url: &str) -> Result<EnvStat,EnvStatGetError> {
     let split: Vec<&str> = resp.split(",").collect();
 
     let temp: f64 = match split.get(0) {
-        None => { return Err(ParseErrorLength); }
-        Some(tem) => {
-            match tem.parse::<f64>() {
-                Ok(t) => { t }
-                Err(err) => { return Err(ParseError(err)); }
-            }
+        None => {
+            return Err(ParseErrorLength);
         }
+        Some(tem) => match tem.parse::<f64>() {
+            Ok(t) => t,
+            Err(err) => {
+                return Err(ParseError(err));
+            }
+        },
     };
 
     let humid: f64 = match split.get(1) {
         None => {
             return Err(ParseErrorLength);
         }
-        Some(hum) => {
-            match hum.parse::<f64>() {
-                Ok(h) => { h }
-                Err(err) => { return Err(ParseError(err)); }
+        Some(hum) => match hum.parse::<f64>() {
+            Ok(h) => h,
+            Err(err) => {
+                return Err(ParseError(err));
             }
-        }
+        },
     };
 
-    Ok(EnvStat{ temp, humid })
+    Ok(EnvStat { temp, humid })
 }
 
-fn print_stats_to_file(stat: EnvStat) {
-    let path_with_filename = Path::new("./log/env_log.csv");
+fn print_stats_to_file(stat: EnvStat, device_name: &str) {
+    // let path_with_filename = Path::new("./log/env_log.csv");
+    let file_path_name = format!("./log/{}", device_name);
+    let path_with_filename = Path::new(&file_path_name);
     let path_without_filename = Path::new("./log/");
     let display = path_with_filename.display();
     // let file_name = "env_log.csv";
@@ -201,7 +208,10 @@ fn print_stats_to_file(stat: EnvStat) {
     match create_dir_all(path_without_filename) {
         Ok(_) => {}
         Err(err) => {
-            panic!("Could not create directories: '{}' in path_with_filename: {}",err,display);
+            panic!(
+                "Could not create directories: '{}' in path_with_filename: {}",
+                err, display
+            );
         }
     }
 
@@ -231,13 +241,37 @@ fn print_stats_to_file(stat: EnvStat) {
 
     match file.flush() {
         Ok(_) => {}
-        Err(err) => { panic!("Error flushing file to system: {}", err); }
+        Err(err) => {
+            panic!("Error flushing file to system: {}", err);
+        }
     }
+}
+
+fn read_device_list() -> Vec<(String, String)> {
+    let path = Path::new("./devices.csv");
+    let contents = fs::read_to_string(path).unwrap();
+    #[cfg(debug_assertions)]
+    println!("DEBUG: FILE CONTENTS READ: {}", contents);
+    let list: Vec<&str> = contents.split(",").collect();
+    let mut return_vec: Vec<(String, String)> = vec![];
+    let mut iter = list.iter();
+    loop {
+        if iter.len() == 0 {
+            break;
+        }
+        let ip = iter.next().unwrap().clone();
+        let device_name = iter.next().unwrap().clone();
+        return_vec.push((ip.to_string(), device_name.to_string()));
+    }
+    return_vec
+    // return vec![];
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{get_timestamp_text, EnvStat, print_stats_to_file, get_env_stat_from_url};
+    use crate::{
+        get_env_stat_from_url, get_timestamp_text, print_stats_to_file, read_device_list, EnvStat,
+    };
 
     #[test]
     fn test_get_timestamp_text() {
@@ -254,15 +288,21 @@ mod tests {
             temp: 24.3,
             humid: 30.1,
         };
-        print_stats_to_file(stat);
+        print_stats_to_file(stat, "env_log.csv");
     }
 
     #[test]
     fn test_http_temp_sense_server() {
-
         let stat = get_env_stat_from_url("http://10.0.0.134:80").unwrap();
-        println!("{:?}",stat);
-        print_stats_to_file(stat);
+        println!("{:?}", stat);
+        print_stats_to_file(stat, "env_log.csv");
     }
 
+    #[test]
+    fn test_read_device_list() {
+        let list = read_device_list();
+        for (ip, device_name) in list {
+            println!("IP: {}, Device name: {}", &ip, &device_name);
+        }
+    }
 }
