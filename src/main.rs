@@ -23,6 +23,7 @@ fn main() {
         for device in devices {
             threads.push(spawn_stat_connection_thread(device.0, device.1));
         }
+        //TODO: needs testing, waiting on pico w boards.
     } else {
         println!("Running with wifi mode disabled, looking for compatible serial device");
         for port in ports {
@@ -112,6 +113,7 @@ fn spawn_stat_connection_thread(ip: String, device_name: String) -> JoinHandle<(
                         humid: last_humid,
                     };
                     print_stats_to_file(stat, &device_name);
+                    break; // stop the thread once we are no longer able to get data from it, potentially allow this to be a run option???
                 }
             }
             sleep(Duration::from_secs(5));
@@ -237,8 +239,6 @@ fn print_stats_to_file(stat: EnvStat, device_name: &str) {
         }
     };
 
-    // file.sync_all().unwrap();
-
     match file.flush() {
         Ok(_) => {}
         Err(err) => {
@@ -249,22 +249,37 @@ fn print_stats_to_file(stat: EnvStat, device_name: &str) {
 
 fn read_device_list() -> Vec<(String, String)> {
     let path = Path::new("./devices.csv");
-    let contents = fs::read_to_string(path).unwrap();
-    #[cfg(debug_assertions)]
-    println!("DEBUG: FILE CONTENTS READ: {}", contents);
-    let list: Vec<&str> = contents.split(",").collect();
-    let mut return_vec: Vec<(String, String)> = vec![];
-    let mut iter = list.iter();
-    loop {
-        if iter.len() == 0 {
-            break;
+    if let Ok(contents) = fs::read_to_string(path) {
+        #[cfg(debug_assertions)]
+        println!("DEBUG: FILE CONTENTS READ: {}", contents);
+
+        let list: Vec<&str> = contents.split(",").collect();
+        let mut return_vec: Vec<(String, String)> = vec![];
+        let mut iter = list.iter();
+        loop {
+            if iter.len() == 0 {
+                break;
+            } // if iterator is empty, we break the loop
+            let ip = match iter.next() {
+                None => {
+                    return return_vec; // if the iterator wasn't empty, this should never fail, but just incase :)
+                }
+                Some(ip) => ip.clone(),
+            };
+            let device_name = match iter.next() {
+                None => {
+                    println!("[Warning] devices.csv file missing name for an ip, found an ip but not a name, skipping...");
+                    return return_vec; // if the device list was missing a name for this ip address, we break early and skip it.
+                }
+                Some(devname) => devname.clone(),
+            };
+            return_vec.push((ip.to_string(), device_name.to_string()));
         }
-        let ip = iter.next().unwrap().clone();
-        let device_name = iter.next().unwrap().clone();
-        return_vec.push((ip.to_string(), device_name.to_string()));
+        return_vec // return the list we made if we found the file
     }
-    return_vec
-    // return vec![];
+    else {
+        return vec![]; // if we didnt find the file, return an empty list, most likely making the program run nothing and cease.
+    }
 }
 
 #[cfg(test)]
