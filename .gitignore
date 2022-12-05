@@ -89,3 +89,4 @@ fabric.properties
 /python_program/httpserver_code.py
 /.idea/csv-editor.xml
 /devices.csv
+/log/

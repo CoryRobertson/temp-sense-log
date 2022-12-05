@@ -8,6 +8,8 @@ use std::thread::{sleep, JoinHandle};
 use std::time::{Duration, SystemTime};
 use std::{env, fs, thread};
 
+static POLL_DELAY_SECONDS: u64 = 5;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -16,18 +18,22 @@ fn main() {
     let ports = serialport::available_ports().expect("no ports found");
 
     if wifi {
-        let devices = read_device_list();
+        let devices = read_device_list(); // devices are output in a vector in form of (ip, device name)
         let mut threads: Vec<JoinHandle<()>> = vec![];
         println!("Running with wifi mode enabled");
 
         for device in devices {
             threads.push(spawn_stat_connection_thread(device.0, device.1));
-        }
+        } // add each device from the device list to its own thread.
+
+        for thread in threads {
+            let _ = thread.join();
+        } // join all threads.
+
         //TODO: needs testing, waiting on pico w boards.
     } else {
         println!("Running with wifi mode disabled, looking for compatible serial device");
         for port in ports {
-            // println!("{:?}", port);
 
             let mut com_port = serialport::new(port.port_name.clone(), 9600)
                 .timeout(Duration::from_secs(5))
@@ -103,7 +109,7 @@ fn spawn_stat_connection_thread(ip: String, device_name: String) -> JoinHandle<(
                     last_log = SystemTime::now();
                     last_temp = stat.temp;
                     last_humid = stat.humid;
-                    println!("Temp: {}, Humid: {}", last_temp, last_humid);
+                    println!("Device Name: {}, Temp: {}, Humid: {}", &device_name, last_temp, last_humid);
                     print_stats_to_file(stat, &device_name);
                 }
                 Err(err) => {
@@ -116,7 +122,7 @@ fn spawn_stat_connection_thread(ip: String, device_name: String) -> JoinHandle<(
                     break; // stop the thread once we are no longer able to get data from it, potentially allow this to be a run option???
                 }
             }
-            sleep(Duration::from_secs(5));
+            sleep(Duration::from_secs(POLL_DELAY_SECONDS));
         }
     })
 }
@@ -201,7 +207,7 @@ fn get_env_stat_from_url(url: &str) -> Result<EnvStat, EnvStatGetError> {
 
 fn print_stats_to_file(stat: EnvStat, device_name: &str) {
     // let path_with_filename = Path::new("./log/env_log.csv");
-    let file_path_name = format!("./log/{}", device_name);
+    let file_path_name = format!("./log/{}.csv", device_name);
     let path_with_filename = Path::new(&file_path_name);
     let path_without_filename = Path::new("./log/");
     let display = path_with_filename.display();
@@ -228,7 +234,6 @@ fn print_stats_to_file(stat: EnvStat, device_name: &str) {
             panic!("{},{}", e, display);
         }
     };
-    println!("{}", display);
 
     let full_text = get_timestamp_text(&stat);
 
@@ -276,8 +281,7 @@ fn read_device_list() -> Vec<(String, String)> {
             return_vec.push((ip.to_string(), device_name.to_string()));
         }
         return_vec // return the list we made if we found the file
-    }
-    else {
+    } else {
         return vec![]; // if we didnt find the file, return an empty list, most likely making the program run nothing and cease.
     }
 }
