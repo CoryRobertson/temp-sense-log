@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use core::net::Ipv4Addr;
+use core::str::FromStr;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
@@ -10,11 +12,20 @@ use embassy_rp::{
     peripherals::{I2C0, PIO0, UART1},
     uart,
 };
-
+use embassy_rp::peripherals::DMA_CH0;
 use embassy_time::Timer;
 use gpio::{Level, Output};
 use {defmt_rtt as _, panic_probe as _};
 use embassy_rp::pio::Pio;
+use static_cell::StaticCell;
+use embassy_net::{Ipv4Address, Ipv4Cidr, Runner, StackResources};
+use embassy_net::dns::DnsSocket;
+use embassy_net::tcp::client::{TcpClient, TcpClientState};
+use embassy_rp::clocks::RoscRng;
+use heapless::Vec;
+use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
+use reqwless::request::Method;
+use rand_core::RngCore;
 
 bind_interrupts!(struct IrqsI2C {
     I2C0_IRQ => InterruptHandler<I2C0>;
@@ -27,35 +38,142 @@ bind_interrupts!(struct IrqsWifi {
 static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
 static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
 
+#[embassy_executor::task]
+async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>) -> ! {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
+    runner.run().await
+}
 
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
+    let mut rng = RoscRng;
 
     let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
     let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
 
 
 
-    let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
 
+    // networking pins
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
     let mut pio = Pio::new(p.PIO0, IrqsWifi);
     let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p.PIN_24, p.PIN_29, p.DMA_CH0);
 
+    // network state objects and tasks
+    static STATE: StaticCell<cyw43::State> = StaticCell::new();
+    let state = STATE.init(cyw43::State::new());
+    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+    unwrap!(spawner.spawn(cyw43_task(runner)));
+
+    control.init(clm).await;
+    control
+        .set_power_management(cyw43::PowerManagementMode::PowerSave)
+        .await;
+
+    // let config = embassy_net::Config::dhcpv4(Default::default());
+    // Use static IP configuration instead of DHCP
+    let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
+       address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 69, 2), 24),
+       dns_servers: Vec::from_slice(&[Ipv4Addr::from_str("1.1.1.1").unwrap(),Ipv4Addr::from_str("8.8.8.8").unwrap()]).unwrap(),
+       gateway: Some(Ipv4Address::new(192, 168, 69, 1)),
+    });
+
+
+
+    // network stack seed
+    let seed = RoscRng::next_u32(&mut RoscRng);
+
+    // network stack
+    static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
+    let (stack, runner) = embassy_net::new(net_device, config, RESOURCES.init(StackResources::new()), seed as u64);
+
+    unwrap!(spawner.spawn(net_task(runner)));
 
 
     loop {
-        // led.set_high();
+        match control
+            .join_wpa2(WIFI_NETWORK, WIFI_PASSWORD)
+            .await
+        {
+            Ok(_) => break,
+            Err(err) => {
+                info!("join failed with status={}", err.status);
+            }
+        }
+    }
+
+    info!("waiting for DHCP...");
+    while !stack.is_config_up() {
+        Timer::after_millis(100).await;
+    }
+    info!("DHCP is now up!");
+
+    info!("waiting for link up...");
+    while !stack.is_link_up() {
+        Timer::after_millis(500).await;
+    }
+    info!("Link is up!");
+
+    info!("waiting for stack to be up...");
+    stack.wait_config_up().await;
+    info!("Stack is up!");
+
+    let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
+
+
+
+    loop {
+        let mut rx_buffer = [0; 8192];
+        let mut tls_read_buffer = [0; 16640];
+        let mut tls_write_buffer = [0; 16640];
+        let client_state = TcpClientState::<1, 1024, 1024>::new();
+        let tcp_client = TcpClient::new(stack, &client_state);
+        let dns_client = DnsSocket::new(stack);
+        let tls_config = TlsConfig::new(seed as u64, &mut tls_read_buffer, &mut tls_write_buffer, TlsVerify::None);
+
+        let mut http_client = HttpClient::new(&tcp_client, &dns_client);
+        let url = "http://worldtimeapi.org/api/timezone/Europe/Berlin";
+
+        info!("connecting to {}", &url);
+
+        let mut request = match http_client.request(Method::GET, &url).await {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to make HTTP request: {:?}", e);
+                return; // handle the error
+            }
+        };
+
+        let response = match request.send(&mut rx_buffer).await {
+            Ok(resp) => resp,
+            Err(_e) => {
+                error!("Failed to send HTTP request");
+                return; // handle the error;
+            }
+        };
+
+        let body = match core::str::from_utf8(response.body().read_to_end().await.unwrap()) {
+            Ok(b) => b,
+            Err(_e) => {
+                error!("Failed to read response body");
+                return; // handle the error
+            }
+        };
+        info!("Response body: {:?}", &body);
+
         info!(
             "Temp: {}, Humidity: {}",
             sensor.get_temperature().await,
             sensor.get_humidity().await
         );
-        // led.set_low();
         Timer::after_millis(1000).await;
     }
 }
