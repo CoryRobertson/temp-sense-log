@@ -19,6 +19,7 @@ embassy-executor = { version = "0.6.0", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
+    "nightly",
     "defmt",
     "integrated-timers",
     "task-arena-size-32768",

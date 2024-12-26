@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(impl_trait_in_assoc_type)]
 
 use core::net::Ipv4Addr;
 use core::str::FromStr;
@@ -13,12 +14,12 @@ use embassy_rp::{
     uart,
 };
 use embassy_rp::peripherals::DMA_CH0;
-use embassy_time::Timer;
+use embassy_time::{Duration, Ticker, Timer};
 use gpio::{Level, Output};
 use {defmt_rtt as _, panic_probe as _};
 use embassy_rp::pio::Pio;
 use static_cell::StaticCell;
-use embassy_net::{Ipv4Address, Ipv4Cidr, Runner, StackResources};
+use embassy_net::{Ipv4Address, Ipv4Cidr, Runner, Stack, StackResources};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_rp::clocks::RoscRng;
@@ -35,8 +36,8 @@ bind_interrupts!(struct IrqsWifi {
     PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
 });
 
-static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
-static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
+pub static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
+pub static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
 
 #[embassy_executor::task]
 async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>) -> ! {
@@ -55,8 +56,19 @@ async fn main(spawner: Spawner) {
 
     let mut rng = RoscRng;
 
-    let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
-    let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
+
+    // To make flashing faster for development, you may want to flash the firmwares independently
+    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
+    //     probe-rs download ../../cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
+    //     probe-rs download cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
+    //     probe-rs download ../../cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
+    //     probe-rs download cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
+    let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
+    let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
+
+
+    // let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
+    // let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
 
 
 
@@ -81,12 +93,10 @@ async fn main(spawner: Spawner) {
     // let config = embassy_net::Config::dhcpv4(Default::default());
     // Use static IP configuration instead of DHCP
     let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-       address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 69, 2), 24),
+       address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 224), 24),
        dns_servers: Vec::from_slice(&[Ipv4Addr::from_str("1.1.1.1").unwrap(),Ipv4Addr::from_str("8.8.8.8").unwrap()]).unwrap(),
-       gateway: Some(Ipv4Address::new(192, 168, 69, 1)),
+       gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
     });
-
-
 
     // network stack seed
     let seed = RoscRng::next_u32(&mut RoscRng);
@@ -128,9 +138,12 @@ async fn main(spawner: Spawner) {
 
     let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
 
-
+    let mut ticker = Ticker::every(Duration::from_secs(60));
 
     loop {
+
+        let url = "http://10.0.0.132:8080/reading/abcd/4.2/5.2";
+        // let url = "http://google.com";
         let mut rx_buffer = [0; 8192];
         let mut tls_read_buffer = [0; 16640];
         let mut tls_write_buffer = [0; 16640];
@@ -138,11 +151,9 @@ async fn main(spawner: Spawner) {
         let tcp_client = TcpClient::new(stack, &client_state);
         let dns_client = DnsSocket::new(stack);
         let tls_config = TlsConfig::new(seed as u64, &mut tls_read_buffer, &mut tls_write_buffer, TlsVerify::None);
-
         let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-        let url = "http://worldtimeapi.org/api/timezone/Europe/Berlin";
 
-        info!("connecting to {}", &url);
+        let reading = sensor.get_reading().await;
 
         let mut request = match http_client.request(Method::GET, &url).await {
             Ok(req) => req,
@@ -168,18 +179,31 @@ async fn main(spawner: Spawner) {
             }
         };
         info!("Response body: {:?}", &body);
-
-        info!(
-            "Temp: {}, Humidity: {}",
-            sensor.get_temperature().await,
-            sensor.get_humidity().await
-        );
-        Timer::after_millis(1000).await;
+        info!("Reading: {:?}", reading);
+        ticker.next().await;
     }
+
 }
+
 
 pub struct AHT20<'a> {
     i2c: I2c<'a, I2C0, i2c::Async>,
+}
+
+#[derive(Debug, Format)]
+pub struct Reading {
+    pub temperature: f32,
+    pub humidity: f32,
+}
+
+
+
+impl Reading {
+    pub fn new(temperature: f32, humidity: f32) -> Self {
+        Self {
+            temperature, humidity
+        }
+    }
 }
 
 impl<'a> AHT20<'a> {
@@ -215,6 +239,10 @@ impl<'a> AHT20<'a> {
         Timer::after_millis(80).await;
 
         new_sensor
+    }
+
+    pub async fn get_reading(&mut self) -> Reading {
+        Reading::new(self.get_temperature().await, self.get_humidity().await)
     }
 
     pub async fn get_temperature(&mut self) -> f32 {
