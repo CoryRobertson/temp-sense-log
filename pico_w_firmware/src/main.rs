@@ -56,22 +56,14 @@ async fn main(spawner: Spawner) {
 
     let mut rng = RoscRng;
 
+    // TODO: https://crates.io/crates/lexical-parse-float
 
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs download ../../cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
     //     probe-rs download cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
-    //     probe-rs download ../../cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
     //     probe-rs download cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
     let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
-
-
-    // let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
-    // let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
-
-
-
 
     // networking pins
     let pwr = Output::new(p.PIN_23, Level::Low);
@@ -139,10 +131,13 @@ async fn main(spawner: Spawner) {
     let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
-
+    let base_url = "http://10.0.0.130:8080/reading/abcd/"; // TODO: more build options maybe in build script
     loop {
 
-        let url = "http://10.0.0.132:8080/reading/abcd/4.2/5.2";
+        let mut url = heapless::String::<60>::from_str(base_url).unwrap();
+
+        let reading = sensor.get_reading().await;
+
         // let url = "http://google.com";
         let mut rx_buffer = [0; 8192];
         let mut tls_read_buffer = [0; 16640];
@@ -152,8 +147,6 @@ async fn main(spawner: Spawner) {
         let dns_client = DnsSocket::new(stack);
         let tls_config = TlsConfig::new(seed as u64, &mut tls_read_buffer, &mut tls_write_buffer, TlsVerify::None);
         let mut http_client = HttpClient::new(&tcp_client, &dns_client);
-
-        let reading = sensor.get_reading().await;
 
         let mut request = match http_client.request(Method::GET, &url).await {
             Ok(req) => req,
