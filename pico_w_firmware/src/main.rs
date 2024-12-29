@@ -10,8 +10,8 @@ use embassy_executor::Spawner;
 use embassy_rp::{
     bind_interrupts, gpio,
     i2c::{self, I2c, InterruptHandler},
-    peripherals::{I2C0, PIO0, UART1},
-    uart,
+    peripherals::{I2C0, PIO0},
+    
 };
 use embassy_rp::peripherals::DMA_CH0;
 use embassy_time::{Duration, Ticker, Timer};
@@ -19,7 +19,7 @@ use gpio::{Level, Output};
 use {defmt_rtt as _, panic_probe as _};
 use embassy_rp::pio::Pio;
 use static_cell::StaticCell;
-use embassy_net::{Ipv4Address, Ipv4Cidr, Runner, Stack, StackResources};
+use embassy_net::{Ipv4Address, Ipv4Cidr, StackResources};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_rp::clocks::RoscRng;
@@ -131,14 +131,35 @@ async fn main(spawner: Spawner) {
     let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
-    let base_url = "http://10.0.0.130:8080/reading/abcd/"; // TODO: more build options maybe in build script
+    let base_url = env!("BASE_URL"); // TODO: more build options maybe in build script
+
+    // let options = lexical_core::WriteFloatOptions::builder()
+    // .inf_string(Some(b"Infinity"))
+    // .nan_string(Some(b"NaN"))
+    // .max_significant_digits(num::NonZeroUsize::new(4))
+    // .trim_floats(true)
+    // .build().unwrap();
+
     loop {
 
         let mut url = heapless::String::<60>::from_str(base_url).unwrap();
 
-        let reading = sensor.get_reading().await;
 
-        // let url = "http://google.com";
+        
+        let reading = sensor.get_reading().await;
+        
+        // write sensor readings to a heapless string so we can send it as part of the URL
+        let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
+        let temperature_string = lexical_core::write(reading.temperature, &mut float_buf);
+        url.push_str(core::str::from_utf8(&float_buf).expect("TODO"));
+
+        // append a / between temperature and the humidity as thats what the web server expects
+        url.push('/');
+        
+        let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
+        let temperature_string = lexical_core::write(reading.humidity, &mut float_buf);
+        url.push_str(core::str::from_utf8(&float_buf).expect("TODO"));
+        
         let mut rx_buffer = [0; 8192];
         let mut tls_read_buffer = [0; 16640];
         let mut tls_write_buffer = [0; 16640];
@@ -148,6 +169,7 @@ async fn main(spawner: Spawner) {
         let tls_config = TlsConfig::new(seed as u64, &mut tls_read_buffer, &mut tls_write_buffer, TlsVerify::None);
         let mut http_client = HttpClient::new(&tcp_client, &dns_client);
 
+        info!("Connecting to url: {}", url);
         let mut request = match http_client.request(Method::GET, &url).await {
             Ok(req) => req,
             Err(e) => {
