@@ -3,16 +3,12 @@
 #![feature(impl_trait_in_assoc_type)]
 
 use core::net::Ipv4Addr;
+use core::num;
 use core::str::FromStr;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_rp::{
-    bind_interrupts, gpio,
-    i2c::{self, I2c, InterruptHandler},
-    peripherals::{I2C0, PIO0},
-    
-};
+use embassy_rp::{bind_interrupts, gpio, i2c::{self, I2c, InterruptHandler}, peripherals::{I2C0, PIO0}, Peripherals};
 use embassy_rp::peripherals::DMA_CH0;
 use embassy_time::{Duration, Ticker, Timer};
 use gpio::{Level, Output};
@@ -38,6 +34,7 @@ bind_interrupts!(struct IrqsWifi {
 
 pub static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
 pub static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
+pub static READING_PERIOD: Option<&'static str> = option_env!("READING_PERIOD");
 
 #[embassy_executor::task]
 async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>) -> ! {
@@ -100,6 +97,7 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(net_task(runner)));
 
 
+
     loop {
         match control
             .join_wpa2(WIFI_NETWORK, WIFI_PASSWORD)
@@ -130,43 +128,53 @@ async fn main(spawner: Spawner) {
 
     let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
 
-    let mut ticker = Ticker::every(Duration::from_secs(60));
+    let mut ticker = Ticker::every(Duration::from_secs(READING_PERIOD.unwrap_or("60").parse().unwrap()));
     let base_url = env!("BASE_URL"); // TODO: more build options maybe in build script
 
-    // let options = lexical_core::WriteFloatOptions::builder()
-    // .inf_string(Some(b"Infinity"))
-    // .nan_string(Some(b"NaN"))
-    // .max_significant_digits(num::NonZeroUsize::new(4))
-    // .trim_floats(true)
-    // .build().unwrap();
+    info!("Base url: {}", base_url);
+
+    let options = lexical_core::WriteFloatOptions::builder()
+    .inf_string(Some(b"Infinity"))
+    .nan_string(Some(b"NaN"))
+    .max_significant_digits(num::NonZeroUsize::new(4))
+    .trim_floats(true)
+    .build().unwrap();
+
+    const FORMAT: u128 = lexical_core::format::STANDARD;
+
+    // static SENSOR: StaticCell<AHT20<'static>> = StaticCell::new();
+    //
+    // SENSOR.init(sensor);
 
     loop {
-
-        let mut url = heapless::String::<60>::from_str(base_url).unwrap();
-
-
-        
         let reading = sensor.get_reading().await;
-        
-        // write sensor readings to a heapless string so we can send it as part of the URL
-        let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
-        let temperature_string = lexical_core::write(reading.temperature, &mut float_buf);
-        url.push_str(core::str::from_utf8(&float_buf).expect("TODO"));
 
-        // append a / between temperature and the humidity as thats what the web server expects
-        url.push('/');
-        
-        let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
-        let temperature_string = lexical_core::write(reading.humidity, &mut float_buf);
-        url.push_str(core::str::from_utf8(&float_buf).expect("TODO"));
+        info!("Reading: temp: {}, humidity: {}", reading.temperature, reading.humidity);
+
+        let url = {
+            let mut url = heapless::String::<60>::from_str(base_url).unwrap();
+
+            // write sensor readings to a heapless string so we can send it as part of the URL
+            let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
+            let temperature_string = lexical_core::write_with_options::<f32,FORMAT>(reading.temperature,&mut float_buf,&options);
+            url.push_str(core::str::from_utf8(&temperature_string).expect("TODO"));
+
+            // append a / between temperature and the humidity as that's what the web server expects
+            url.push('/');
+
+            let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
+            let humidity_string = lexical_core::write_with_options::<f32,FORMAT>(reading.humidity,&mut float_buf,&options);
+            url.push_str(core::str::from_utf8(&humidity_string).expect("TODO"));
+
+            url
+        };
+
+        info!("Built url: {}", url);
         
         let mut rx_buffer = [0; 8192];
-        let mut tls_read_buffer = [0; 16640];
-        let mut tls_write_buffer = [0; 16640];
         let client_state = TcpClientState::<1, 1024, 1024>::new();
         let tcp_client = TcpClient::new(stack, &client_state);
         let dns_client = DnsSocket::new(stack);
-        let tls_config = TlsConfig::new(seed as u64, &mut tls_read_buffer, &mut tls_write_buffer, TlsVerify::None);
         let mut http_client = HttpClient::new(&tcp_client, &dns_client);
 
         info!("Connecting to url: {}", url);
@@ -197,8 +205,11 @@ async fn main(spawner: Spawner) {
         info!("Reading: {:?}", reading);
         ticker.next().await;
     }
-
 }
+
+async fn process_readings(
+    sensor: AHT20<'static>
+) {}
 
 
 pub struct AHT20<'a> {
@@ -210,8 +221,6 @@ pub struct Reading {
     pub temperature: f32,
     pub humidity: f32,
 }
-
-
 
 impl Reading {
     pub fn new(temperature: f32, humidity: f32) -> Self {
