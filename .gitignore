@@ -88,3 +88,4 @@ fabric.properties
 /log/env_log.csv
 /python_program/httpserver_code.py
 /.idea/csv-editor.xml
+/hardware/temp_sense_board/temp_sense_board-backups
