@@ -8,21 +8,25 @@ use core::str::FromStr;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_rp::{bind_interrupts, gpio, i2c::{self, I2c, InterruptHandler}, peripherals::{I2C0, PIO0}, Peripherals};
-use embassy_rp::peripherals::DMA_CH0;
-use embassy_time::{Duration, Ticker, Timer};
-use gpio::{Level, Output};
-use {defmt_rtt as _, panic_probe as _};
-use embassy_rp::pio::Pio;
-use static_cell::StaticCell;
-use embassy_net::{Ipv4Address, Ipv4Cidr, StackResources};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
+use embassy_net::{Ipv4Address, Ipv4Cidr, Stack, StackResources};
 use embassy_rp::clocks::RoscRng;
+use embassy_rp::peripherals::DMA_CH0;
+use embassy_rp::pio::Pio;
+use embassy_rp::{
+    bind_interrupts, gpio,
+    i2c::{self, I2c, InterruptHandler},
+    peripherals::{I2C0, PIO0},
+};
+use embassy_time::{Duration, Ticker, Timer};
+use gpio::{Level, Output};
 use heapless::Vec;
-use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
-use reqwless::request::Method;
 use rand_core::RngCore;
+use reqwless::client::HttpClient;
+use reqwless::request::Method;
+use static_cell::StaticCell;
+use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct IrqsI2C {
     I2C0_IRQ => InterruptHandler<I2C0>;
@@ -35,9 +39,12 @@ bind_interrupts!(struct IrqsWifi {
 pub static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
 pub static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
 pub static READING_PERIOD: Option<&'static str> = option_env!("READING_PERIOD");
+pub static BASE_URL: &'static str = env!("BASE_URL");
 
 #[embassy_executor::task]
-async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>) -> ! {
+async fn cyw43_task(
+    runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
+) -> ! {
     runner.run().await
 }
 
@@ -46,14 +53,9 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
     runner.run().await
 }
 
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
-
-    let mut rng = RoscRng;
-
-    // TODO: https://crates.io/crates/lexical-parse-float
 
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
@@ -66,7 +68,15 @@ async fn main(spawner: Spawner) {
     let pwr = Output::new(p.PIN_23, Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
     let mut pio = Pio::new(p.PIO0, IrqsWifi);
-    let spi = PioSpi::new(&mut pio.common, pio.sm0, pio.irq0, cs, p.PIN_24, p.PIN_29, p.DMA_CH0);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        pio.irq0,
+        cs,
+        p.PIN_24,
+        p.PIN_29,
+        p.DMA_CH0,
+    );
 
     // network state objects and tasks
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
@@ -82,9 +92,13 @@ async fn main(spawner: Spawner) {
     // let config = embassy_net::Config::dhcpv4(Default::default());
     // Use static IP configuration instead of DHCP
     let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-       address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 224), 24),
-       dns_servers: Vec::from_slice(&[Ipv4Addr::from_str("1.1.1.1").unwrap(),Ipv4Addr::from_str("8.8.8.8").unwrap()]).unwrap(),
-       gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
+        address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 224), 24),
+        dns_servers: Vec::from_slice(&[
+            Ipv4Addr::from_str("1.1.1.1").unwrap(),
+            Ipv4Addr::from_str("8.8.8.8").unwrap(),
+        ])
+        .unwrap(),
+        gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
     });
 
     // network stack seed
@@ -92,17 +106,17 @@ async fn main(spawner: Spawner) {
 
     // network stack
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
-    let (stack, runner) = embassy_net::new(net_device, config, RESOURCES.init(StackResources::new()), seed as u64);
+    let (stack, runner) = embassy_net::new(
+        net_device,
+        config,
+        RESOURCES.init(StackResources::new()),
+        seed as u64,
+    );
 
     unwrap!(spawner.spawn(net_task(runner)));
 
-
-
     loop {
-        match control
-            .join_wpa2(WIFI_NETWORK, WIFI_PASSWORD)
-            .await
-        {
+        match control.join_wpa2(WIFI_NETWORK, WIFI_PASSWORD).await {
             Ok(_) => break,
             Err(err) => {
                 info!("join failed with status={}", err.status);
@@ -126,51 +140,79 @@ async fn main(spawner: Spawner) {
     stack.wait_config_up().await;
     info!("Stack is up!");
 
-    let mut sensor = AHT20::new(I2c::new_async(p.I2C0, p.PIN_5, p.PIN_4, IrqsI2C, i2c::Config::default())).await;
+    let sensor = AHT20::new(I2c::new_async(
+        p.I2C0,
+        p.PIN_5,
+        p.PIN_4,
+        IrqsI2C,
+        i2c::Config::default(),
+    ))
+    .await;
 
-    let mut ticker = Ticker::every(Duration::from_secs(READING_PERIOD.unwrap_or("60").parse().unwrap()));
-    let base_url = env!("BASE_URL"); // TODO: more build options maybe in build script
+    info!("Base url: {}", BASE_URL);
 
-    info!("Base url: {}", base_url);
+    // spawn the task that reads from the sensor, and then pushes that data to the web server
+    unwrap!(spawner.spawn(process_readings(sensor, stack)));
+}
+
+// TODO: eventually write a driver for SHT4x
+// TODO: make a section of the program that searches for an AHT20, then an SHT4x, and it should spawn the task of which ever one is found on the I2C line.
+
+#[embassy_executor::task]
+async fn process_readings(mut sensor: AHT20<'static>, stack: Stack<'static>) {
+    let mut ticker = Ticker::every(Duration::from_secs(
+        READING_PERIOD.unwrap_or("60").parse().unwrap(),
+    ));
 
     let options = lexical_core::WriteFloatOptions::builder()
-    .inf_string(Some(b"Infinity"))
-    .nan_string(Some(b"NaN"))
-    .max_significant_digits(num::NonZeroUsize::new(4))
-    .trim_floats(true)
-    .build().unwrap();
+        .inf_string(Some(b"Infinity"))
+        .nan_string(Some(b"NaN"))
+        .max_significant_digits(num::NonZeroUsize::new(4))
+        .trim_floats(true)
+        .build()
+        .unwrap();
 
     const FORMAT: u128 = lexical_core::format::STANDARD;
-
-    // static SENSOR: StaticCell<AHT20<'static>> = StaticCell::new();
-    //
-    // SENSOR.init(sensor);
 
     loop {
         let reading = sensor.get_reading().await;
 
-        info!("Reading: temp: {}, humidity: {}", reading.temperature, reading.humidity);
+        info!(
+            "Reading: temp: {}, humidity: {}",
+            reading.temperature, reading.humidity
+        );
 
         let url = {
-            let mut url = heapless::String::<60>::from_str(base_url).unwrap();
+            // we use 120 as the length to make it ABSOLUTELY have enough capacity for writing the data to it
+            let mut url = heapless::String::<120>::from_str(BASE_URL).unwrap();
 
             // write sensor readings to a heapless string so we can send it as part of the URL
-            let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
-            let temperature_string = lexical_core::write_with_options::<f32,FORMAT>(reading.temperature,&mut float_buf,&options);
-            url.push_str(core::str::from_utf8(&temperature_string).expect("TODO"));
+            let mut float_buf = [b'0'; lexical_core::BUFFER_SIZE];
+            let temperature_string = lexical_core::write_with_options::<f32, FORMAT>(
+                reading.temperature,
+                &mut float_buf,
+                &options,
+            );
+
+            // we are going to ignore most of these push operations because we already reduce the size of the floats when writing them to a string, this should only overflow if part of the BASE_URL is too long to begin with
+            let _ = url.push_str(core::str::from_utf8(&temperature_string).expect("TODO"));
 
             // append a / between temperature and the humidity as that's what the web server expects
-            url.push('/');
+            let _ = url.push('/');
 
-            let mut float_buf = [b'0' ; lexical_core::BUFFER_SIZE];
-            let humidity_string = lexical_core::write_with_options::<f32,FORMAT>(reading.humidity,&mut float_buf,&options);
-            url.push_str(core::str::from_utf8(&humidity_string).expect("TODO"));
+            let mut float_buf = [b'0'; lexical_core::BUFFER_SIZE];
+            let humidity_string = lexical_core::write_with_options::<f32, FORMAT>(
+                reading.humidity,
+                &mut float_buf,
+                &options,
+            );
+            let _ = url.push_str(core::str::from_utf8(&humidity_string).expect("TODO"));
 
             url
         };
 
         info!("Built url: {}", url);
-        
+
         let mut rx_buffer = [0; 8192];
         let client_state = TcpClientState::<1, 1024, 1024>::new();
         let tcp_client = TcpClient::new(stack, &client_state);
@@ -207,11 +249,6 @@ async fn main(spawner: Spawner) {
     }
 }
 
-async fn process_readings(
-    sensor: AHT20<'static>
-) {}
-
-
 pub struct AHT20<'a> {
     i2c: I2c<'a, I2C0, i2c::Async>,
 }
@@ -225,7 +262,8 @@ pub struct Reading {
 impl Reading {
     pub fn new(temperature: f32, humidity: f32) -> Self {
         Self {
-            temperature, humidity
+            temperature,
+            humidity,
         }
     }
 }
