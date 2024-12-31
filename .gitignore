@@ -89,3 +89,6 @@ fabric.properties
 /python_program/httpserver_code.py
 /.idea/csv-editor.xml
 /hardware/temp_sense_board/temp_sense_board-backups
+hardware/temp_sense_board/\#auto_saved_files\#
+hardware/temp_sense_board/~temp_sense_board.kicad_pcb.lck
+hardware/temp_sense_board/~temp_sense_board.kicad_sch.lck

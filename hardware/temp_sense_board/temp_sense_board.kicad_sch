@@ -2752,6 +2752,50 @@
 		)
 		(uuid "aa5b0d0a-f79b-434a-93f3-d5ac9490089c")
 	)
+	(global_label "VBUS"
+		(shape input)
+		(at 110.49 93.98 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "04092514-3901-431e-abc4-83cb4050282e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.6062 93.98 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "VBUS"
+		(shape input)
+		(at 110.49 116.84 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0554c6a9-fab7-4e71-b02b-1a7fd11286e5")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.6062 116.84 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
 	(global_label "SCL"
 		(shape input)
 		(at 110.49 68.58 180)
@@ -2776,6 +2820,28 @@
 	)
 	(global_label "SCL"
 		(shape input)
+		(at 110.49 87.63 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1602a869-3e5f-4627-abf3-12ab97f26bb3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9972 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SCL"
+		(shape input)
 		(at 110.49 54.61 180)
 		(fields_autoplaced yes)
 		(effects
@@ -2787,6 +2853,28 @@
 		(uuid "2522b015-5013-4089-bf0b-15f920e1a50b")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 103.9972 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SDA"
+		(shape input)
+		(at 110.49 90.17 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "2ec846d9-be9d-4966-82e0-cb7224ecb7c6")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9367 90.17 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2840,6 +2928,116 @@
 			)
 		)
 	)
+	(global_label "SCL"
+		(shape input)
+		(at 110.49 99.06 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "69a8c56b-850a-4dc1-8cef-256699ff5685")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9972 99.06 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SDA"
+		(shape input)
+		(at 110.49 124.46 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "70543a6a-1445-47cd-a6e8-425691624907")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9367 124.46 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SCL"
+		(shape input)
+		(at 110.49 121.92 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "71d8a2fd-2f1a-4505-9fbd-49ec655a141c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9972 121.92 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "VBUS"
+		(shape input)
+		(at 110.49 105.41 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "74383a53-6567-421f-b4c0-b44cdc3f10e0")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.6062 105.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 107.95 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "97a0e69f-3aa6-41d3-a03c-a342d6563ea6")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.6343 107.95 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
 	(global_label "SDA"
 		(shape input)
 		(at 110.49 57.15 180)
@@ -2862,6 +3060,28 @@
 			)
 		)
 	)
+	(global_label "VBUS"
+		(shape input)
+		(at 110.49 82.55 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "9b2912fa-a38b-4d34-97e5-2a4e0b20baa4")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.6062 82.55 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
 	(global_label "SDA"
 		(shape input)
 		(at 110.49 71.12 180)
@@ -2875,6 +3095,138 @@
 		(uuid "ab84cc2f-c04a-44ba-aa7e-e888a4508d81")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 103.9367 71.12 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 119.38 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "cdcaab05-617f-41f1-9151-bee2c31d9757")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.6343 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SDA"
+		(shape input)
+		(at 110.49 101.6 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "d4343043-1a8b-45f6-a2be-42144d3f87ed")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9367 101.6 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SDA"
+		(shape input)
+		(at 110.49 113.03 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "dd858764-8429-414a-8e0b-70905fa5d357")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9367 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 85.09 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e13eef3c-d213-4336-9379-eae69aee4fb9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.6343 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "SCL"
+		(shape input)
+		(at 110.49 110.49 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e8688008-79c7-4272-8321-39109f27ca68")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.9972 110.49 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 96.52 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f1936262-53a4-44f7-99cd-461d2f297f8a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 103.6343 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -2958,6 +3310,82 @@
 			(project ""
 				(path "/45244dc5-f94b-4391-a397-5e3888664039"
 					(reference "SHT40_Socket1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Conn_01x04_Socket")
+		(at 115.57 107.95 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "348f2689-bbc2-47ca-bf1e-35b16daf7700")
+		(property "Reference" "I2C_EXTRA3"
+			(at 116.84 107.9499 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Conn_01x04_Socket"
+			(at 116.84 110.4899 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"
+			(at 115.57 107.95 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 115.57 107.95 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x04, script generated"
+			(at 115.57 107.95 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "201decac-b49b-49e6-bf0b-f4d79b4bc41e")
+		)
+		(pin "2"
+			(uuid "8a2d35d6-c614-4f63-af9b-81060bc8ad2a")
+		)
+		(pin "3"
+			(uuid "00f9ad54-d1d3-4d8b-9889-053bf99a2e3f")
+		)
+		(pin "4"
+			(uuid "c852e975-9b4b-4174-adab-79d7eee1219d")
+		)
+		(instances
+			(project "temp_sense_board"
+				(path "/45244dc5-f94b-4391-a397-5e3888664039"
+					(reference "I2C_EXTRA3")
 					(unit 1)
 				)
 			)
@@ -3217,6 +3645,234 @@
 			(project ""
 				(path "/45244dc5-f94b-4391-a397-5e3888664039"
 					(reference "AHT20_Socket1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Conn_01x04_Socket")
+		(at 115.57 119.38 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "9275afff-fd72-4995-8327-be3c282e48b9")
+		(property "Reference" "I2C_EXTRA4"
+			(at 116.84 119.3799 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Conn_01x04_Socket"
+			(at 116.84 121.9199 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"
+			(at 115.57 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 115.57 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x04, script generated"
+			(at 115.57 119.38 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "637c5e8d-2355-4109-9ed6-75c787aa7920")
+		)
+		(pin "2"
+			(uuid "a70c2d73-7c52-43c0-8a34-d9c3f18b1d20")
+		)
+		(pin "3"
+			(uuid "b9f581d7-6a2f-4bf7-9e29-7b04a676b4ed")
+		)
+		(pin "4"
+			(uuid "7b925aaa-064d-4325-8e54-f56571200856")
+		)
+		(instances
+			(project "temp_sense_board"
+				(path "/45244dc5-f94b-4391-a397-5e3888664039"
+					(reference "I2C_EXTRA4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Conn_01x04_Socket")
+		(at 115.57 85.09 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "befcf859-c136-4007-9ebf-4b48f2111ba0")
+		(property "Reference" "I2C_EXTRA1"
+			(at 116.84 85.0899 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Conn_01x04_Socket"
+			(at 116.84 87.6299 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"
+			(at 115.57 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 115.57 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x04, script generated"
+			(at 115.57 85.09 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "691f99d7-2467-4152-a51e-b9f965786b13")
+		)
+		(pin "2"
+			(uuid "871b46b3-006d-4df7-8a6c-6f9d26b93c7a")
+		)
+		(pin "3"
+			(uuid "ca3c5c75-5fcd-41aa-bc46-8391aa124459")
+		)
+		(pin "4"
+			(uuid "cd994dac-3347-4750-bf82-3bd2a399b16d")
+		)
+		(instances
+			(project ""
+				(path "/45244dc5-f94b-4391-a397-5e3888664039"
+					(reference "I2C_EXTRA1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Conn_01x04_Socket")
+		(at 115.57 96.52 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "dead3113-a91e-4741-a78a-2be613417814")
+		(property "Reference" "I2C_EXTRA2"
+			(at 116.84 96.5199 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Conn_01x04_Socket"
+			(at 116.84 99.0599 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x04_P2.54mm_Vertical"
+			(at 115.57 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 115.57 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x04, script generated"
+			(at 115.57 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "9c2f240a-7477-4969-9910-98f155253620")
+		)
+		(pin "2"
+			(uuid "b9621dc9-a3e6-49b4-90e3-84723f83536a")
+		)
+		(pin "3"
+			(uuid "1cd4c6ab-76b8-4a1a-81be-c9c7196b28d8")
+		)
+		(pin "4"
+			(uuid "2ff8d820-3b91-4e8e-9f2d-33b9b72a812b")
+		)
+		(instances
+			(project "temp_sense_board"
+				(path "/45244dc5-f94b-4391-a397-5e3888664039"
+					(reference "I2C_EXTRA2")
 					(unit 1)
 				)
 			)
