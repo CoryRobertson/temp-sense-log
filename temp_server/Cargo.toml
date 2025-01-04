@@ -9,4 +9,6 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["fmt","local-time"] }
 tokio = { version = "1.42", features = ["fs","io-std","io-util"] }
 chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = { version = "0.10", features = ["serde"] }
+#chrono-tz = { version = "0.10", features = ["serde"] }
+plotters = { version = "0.3", features = [] }
+csv = { version = "1.3", features = [] }
