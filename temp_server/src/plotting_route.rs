@@ -1,17 +1,18 @@
-use actix_web::{get, web, HttpResponseBuilder, Responder};
-use tracing::{error, info};
-use plotters::backend::SVGBackend;
-use plotters::prelude::{Color, IntoFont, LineSeries, ShapeStyle, BLUE, GREEN, RED, WHITE};
-use tokio::fs::OpenOptions;
-use tracing::log::warn;
-use plotters::chart::{ChartBuilder, SeriesLabelPosition};
-use plotters::element::Rectangle;
-use tokio::fs;
-use std::str::from_utf8;
-use actix_web::http::StatusCode;
-use plotters::drawing::IntoDrawingArea;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use crate::state::TemperatureServerState;
+use crate::LOG_FOLDER_PATH;
+use actix_web::http::StatusCode;
+use actix_web::{get, web, HttpResponseBuilder, Responder};
+use plotters::backend::SVGBackend;
+use plotters::chart::{ChartBuilder, SeriesLabelPosition};
+use plotters::drawing::IntoDrawingArea;
+use plotters::element::Rectangle;
+use plotters::prelude::{Color, IntoFont, LineSeries, ShapeStyle, BLUE, GREEN, RED, WHITE};
+use std::str::from_utf8;
+use tokio::fs;
+use tokio::fs::OpenOptions;
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tracing::log::warn;
+use tracing::{error, info};
 
 #[get("/plot/{location}")]
 pub async fn plot_location_handler(
@@ -29,7 +30,7 @@ pub async fn plot_location_handler(
     let location = location.as_str().into();
 
     info!("Getting data");
-    
+
     // TODO: this needs to eventually draw WAY more datapoints, as one is taken every minute, so this needs to scale all the points down quite a bit
 
     let (temperature_data, humidity_data) = {
@@ -37,12 +38,14 @@ pub async fn plot_location_handler(
         let string_data = {
             String::from_utf8(match lock.get_mut(&location) {
                 None => {
+                    let file_path = LOG_FOLDER_PATH.join(location.path());
+
                     match OpenOptions::new()
                         .append(true)
                         .write(true)
                         .read(true)
                         .create(true) // TODO: this could be create_new(true) which would move us to error case if the file already exists, which would allow us to have possibly more clean code?
-                        .open(location.path())
+                        .open(file_path)
                         .await
                     {
                         Ok(mut file) => {
@@ -50,7 +53,7 @@ pub async fn plot_location_handler(
 
                             file.read_to_end(&mut data).await.unwrap();
 
-                            lock.insert(location.clone(), file);
+                            lock.insert(location.clone(), file.into());
 
                             data
                         }
@@ -61,10 +64,14 @@ pub async fn plot_location_handler(
                     }
                 }
                 Some(location_file) => {
-                    location_file.rewind().await.unwrap();
+                    location_file.get_file_mut(false).rewind().await.unwrap();
 
                     let mut data = vec![];
-                    location_file.read_to_end(&mut data).await.unwrap();
+                    location_file
+                        .get_file_mut(false)
+                        .read_to_end(&mut data)
+                        .await
+                        .unwrap();
 
                     data
                 }
@@ -93,8 +100,8 @@ pub async fn plot_location_handler(
             }
 
             match (
-                line.get(0).map(|s| s.parse().ok()).flatten(),
-                line.get(1).map(|s| s.parse().ok()).flatten(),
+                line.get(0).and_then(|s| s.parse().ok()),
+                line.get(1).and_then(|s| s.parse().ok()),
             ) {
                 (Some(t), Some(h)) => {
                     temperature_data.push((idx as f32, t));
@@ -119,7 +126,6 @@ pub async fn plot_location_handler(
 
             let new_temperature_data = temperature_data
                 .into_iter()
-                
                 .map(|(old_idx, temp)| ((old_idx - subtraction_amount as f32) as f32, temp))
                 .collect();
 

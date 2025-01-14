@@ -42,6 +42,7 @@ impl Reading {
         )
     }
 
+    #[allow(dead_code)]
     pub fn reading_time(&self) -> DateTime<Local> {
         self.reading_time
     }

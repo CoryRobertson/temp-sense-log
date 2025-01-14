@@ -14,15 +14,15 @@ impl Location {
     }
 }
 
-impl Into<Location> for String {
-    fn into(self) -> Location {
-        Location(self.into())
+impl From<String> for Location {
+    fn from(value: String) -> Self {
+        Self(value)
     }
 }
 
-impl Into<Location> for &str {
-    fn into(self) -> Location {
-        self.to_string().into()
+impl From<&str> for Location {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
     }
 }
 
