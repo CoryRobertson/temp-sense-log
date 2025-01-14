@@ -1,4 +1,3 @@
-use std::fs;
 use crate::plotting_route::plot_location_handler;
 use crate::reading_route::reading_handler;
 use actix_web::http::StatusCode;
@@ -7,6 +6,7 @@ use actix_web::HttpServer;
 use actix_web::{get, App, HttpResponseBuilder, Responder};
 use chrono::Local;
 use state::TemperatureServerState;
+use std::fs;
 use std::path::PathBuf;
 use std::string::ToString;
 use std::sync::LazyLock;
@@ -18,23 +18,27 @@ mod reading;
 mod reading_route;
 mod state;
 
-pub static LOG_FOLDER_PATH: LazyLock<PathBuf> =
-    std::sync::LazyLock::new(|| {
-        let p = PathBuf::from("./env_log");
-        if !p.exists() {
-            fs::create_dir(&p).unwrap();
-        }
-        p
-    });
+pub static LOG_FOLDER_PATH: LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
+    let p = PathBuf::from("./env_log");
+    if !p.exists() {
+        fs::create_dir(&p).unwrap();
+    }
+    p
+});
 
-pub static PLOTS_FOLDER_PATH: LazyLock<PathBuf> =
-    std::sync::LazyLock::new(|| {
-        let p = LOG_FOLDER_PATH.join("plots");
-        if !p.exists() {
-            fs::create_dir(&p).unwrap();
-        }
-        p
-    });
+pub static PLOTS_FOLDER_PATH: LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
+    let p = LOG_FOLDER_PATH.join("plots");
+    if !p.exists() {
+        fs::create_dir(&p).unwrap();
+    }
+    p
+});
+
+pub static BIND_PORT: LazyLock<u16> = std::sync::LazyLock::new(|| {
+    option_env!("TEMP_SERVER_BIND_PORT")
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(8080)
+});
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -49,7 +53,7 @@ async fn main() -> std::io::Result<()> {
             .service(plot_location_handler)
             .service(main_page)
     })
-    .bind(("0.0.0.0", 8080))?
+    .bind(("0.0.0.0", *BIND_PORT))?
     .run()
     .await
 }

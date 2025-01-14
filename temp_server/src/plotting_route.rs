@@ -41,7 +41,6 @@ pub async fn plot_location_handler(
                 None => {
                     let file_path = LOG_FOLDER_PATH.join(location.path());
 
-                    info!("path: {}" , file_path.display());
                     match OpenOptions::new()
                         .append(true)
                         .write(true)
@@ -60,7 +59,7 @@ pub async fn plot_location_handler(
                             data
                         }
                         Err(err) => {
-                            error!("Error opening file: {}", err);
+                            error!("Error opening plot file: {}", err);
                             todo!()
                         }
                     }
