@@ -22,8 +22,9 @@ pub async fn plot_location_handler(
     let file_name = format!("{}.svg", location.as_str());
 
     info!("{}", file_name);
+    let path = LOG_FOLDER_PATH.join(file_name);
 
-    let backend = SVGBackend::new(&file_name, (1000, 1000)).into_drawing_area();
+    let backend = SVGBackend::new(&path, (1000, 1000)).into_drawing_area();
 
     backend.fill(&WHITE).unwrap();
 
@@ -224,7 +225,7 @@ pub async fn plot_location_handler(
 
     backend.present().unwrap();
 
-    let file_data = fs::read(&file_name).await.unwrap();
+    let file_data = fs::read(&path).await.unwrap();
     let content = from_utf8(&file_data).unwrap().to_string();
 
     HttpResponseBuilder::new(StatusCode::OK)
