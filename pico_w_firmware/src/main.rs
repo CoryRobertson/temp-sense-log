@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 
+use core::future::Future;
 use core::net::Ipv4Addr;
 use core::num;
 use core::str::FromStr;
@@ -38,10 +39,10 @@ bind_interrupts!(struct IrqsWifi {
     PIO0_IRQ_0 => embassy_rp::pio::InterruptHandler<PIO0>;
 });
 
-pub static WIFI_NETWORK: &'static str = env!("WIFI_NETWORK_PICO");
-pub static WIFI_PASSWORD: &'static str = env!("WIFI_PASSWORD_PICO");
-pub static READING_PERIOD: Option<&'static str> = option_env!("READING_PERIOD");
-pub static BASE_URL: &'static str = env!("BASE_URL");
+pub static WIFI_NETWORK: &str = env!("WIFI_NETWORK_PICO");
+pub static WIFI_PASSWORD: &str = env!("WIFI_PASSWORD_PICO");
+pub static READING_PERIOD: Option<&str> = option_env!("READING_PERIOD");
+pub static BASE_URL: &str = env!("BASE_URL");
 pub const FORMAT: u128 = lexical_core::format::STANDARD;
 
 #[embassy_executor::task]
@@ -95,7 +96,7 @@ async fn main(spawner: Spawner) {
     // let config = embassy_net::Config::dhcpv4(Default::default());
     // Use static IP configuration instead of DHCP
     let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-        address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 224), 24),
+        address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 225), 24),
         dns_servers: Vec::from_slice(&[
             Ipv4Addr::from_str("1.1.1.1").unwrap(),
             Ipv4Addr::from_str("8.8.8.8").unwrap(),
@@ -243,16 +244,16 @@ impl SHT40Mode {
 }
 
 pub trait TempHumidSensor {
-    async fn get_reading(&mut self) -> Reading;
+    fn get_reading(&mut self) -> impl Future<Output = Reading> + Send;
 }
 
-impl<'a> TempHumidSensor for SHT40<'a> {
+impl TempHumidSensor for SHT40<'_> {
     async fn get_reading(&mut self) -> Reading {
         self.measurement().await
     }
 }
 
-impl<'a> TempHumidSensor for AHT20<'a> {
+impl TempHumidSensor for AHT20<'_> {
     async fn get_reading(&mut self) -> Reading {
         self.get_reading().await
     }
@@ -346,6 +347,9 @@ async fn process_readings_sht(
     options: Options,
     mut ticker: Ticker,
 ) {
+    // Read a few sensor values just to get them out of any buffers they may be present in
+    let _ = sensor.get_reading().await;
+    let _ = sensor.get_reading().await;
     loop {
         handle_reading_to_webserver(&mut sensor, &options, stack).await;
         ticker.next().await;
@@ -359,6 +363,9 @@ async fn process_readings_aht(
     options: Options,
     mut ticker: Ticker,
 ) {
+    // Read a few sensor values just to get them out of any buffers they may be present in
+    let _ = sensor.get_reading().await;
+    let _ = sensor.get_reading().await;
     loop {
         handle_reading_to_webserver(&mut sensor, &options, stack).await;
         ticker.next().await;
@@ -386,11 +393,11 @@ async fn handle_reading_to_webserver(
         let temperature_string = lexical_core::write_with_options::<f32, FORMAT>(
             reading.temperature,
             &mut float_buf,
-            &options,
+            options,
         );
 
         // we are going to ignore most of these push operations because we already reduce the size of the floats when writing them to a string, this should only overflow if part of the BASE_URL is too long to begin with
-        let _ = url.push_str(core::str::from_utf8(&temperature_string).expect("TODO"));
+        let _ = url.push_str(core::str::from_utf8(temperature_string).expect("TODO"));
 
         // append a / between temperature and the humidity as that's what the web server expects
         let _ = url.push('/');
@@ -399,9 +406,9 @@ async fn handle_reading_to_webserver(
         let humidity_string = lexical_core::write_with_options::<f32, FORMAT>(
             reading.humidity,
             &mut float_buf,
-            &options,
+            options,
         );
-        let _ = url.push_str(core::str::from_utf8(&humidity_string).expect("TODO"));
+        let _ = url.push_str(core::str::from_utf8(humidity_string).expect("TODO"));
 
         url
     };
@@ -463,9 +470,11 @@ impl Reading {
 
 impl<'a> AHT20<'a> {
     const AHT20_I2CADDR: u8 = 0x38;
+    #[allow(dead_code)]
     const AHT20_CMD_SOFTRESET: [u8; 1] = [0xBA];
     const AHT20_CMD_INITIALIZE: [u8; 3] = [0xBE, 0x08, 0x00];
     const AHT20_CMD_MEASURE: [u8; 3] = [0xAC, 0x33, 0x00];
+    #[allow(dead_code)]
     const AHT20_STATUSBIT_BUSY: u8 = 7;
     const AHT20_STATUSBIT_CALIBRATED: u8 = 3;
 

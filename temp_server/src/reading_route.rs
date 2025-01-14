@@ -13,7 +13,7 @@ pub async fn reading_handler(
 ) -> impl Responder {
     let reading = Reading::from(reading);
     let file_format_data = reading.format_to_file();
-    info!("New reading: {}", file_format_data);
+    info!("New reading: {} at location: {}", file_format_data, reading.location());
     let location = reading.location();
 
     let mut lock = state.file_buf_list.lock().await;

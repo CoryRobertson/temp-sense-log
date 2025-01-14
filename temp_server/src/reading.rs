@@ -4,6 +4,7 @@ use actix_web::web::Path;
 use chrono::{DateTime, Local};
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct Reading {
     location: Location,
     temperature: f32,
