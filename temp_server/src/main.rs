@@ -1,3 +1,4 @@
+use std::fs;
 use crate::plotting_route::plot_location_handler;
 use crate::reading_route::reading_handler;
 use actix_web::http::StatusCode;
@@ -18,7 +19,22 @@ mod reading_route;
 mod state;
 
 pub static LOG_FOLDER_PATH: LazyLock<PathBuf> =
-    std::sync::LazyLock::new(|| PathBuf::from("./env_log"));
+    std::sync::LazyLock::new(|| {
+        let p = PathBuf::from("./env_log");
+        if !p.exists() {
+            fs::create_dir(&p).unwrap();
+        }
+        p
+    });
+
+pub static PLOTS_FOLDER_PATH: LazyLock<PathBuf> =
+    std::sync::LazyLock::new(|| {
+        let p = LOG_FOLDER_PATH.join("plots");
+        if !p.exists() {
+            fs::create_dir(&p).unwrap();
+        }
+        p
+    });
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

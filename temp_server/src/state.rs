@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
 use std::sync::Arc;
+use tokio::fs::OpenOptions;
 use tokio::sync::Mutex;
 
 pub struct TemperatureServerState {
@@ -77,7 +78,12 @@ impl Default for TemperatureServerState {
                     .for_each(|(csv_filename, entry_path)| {
                         hash_map.insert(
                             csv_filename.replace(".csv", "").into(),
-                            File::open(entry_path).unwrap().into(),
+                            std::fs::OpenOptions::new()
+                                .append(true)
+                                .write(true)
+                                .read(true)
+                                .create(true) // TODO: this could be create_new(true) which would move us to error case if the file already exists, which would allow us to have possibly more clean code?
+                                .open(entry_path).unwrap().into(),
                         );
                     });
             }

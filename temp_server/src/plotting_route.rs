@@ -1,5 +1,5 @@
 use crate::state::TemperatureServerState;
-use crate::LOG_FOLDER_PATH;
+use crate::{LOG_FOLDER_PATH, PLOTS_FOLDER_PATH};
 use actix_web::http::StatusCode;
 use actix_web::{get, web, HttpResponseBuilder, Responder};
 use plotters::backend::SVGBackend;
@@ -22,7 +22,7 @@ pub async fn plot_location_handler(
     let file_name = format!("{}.svg", location.as_str());
 
     info!("{}", file_name);
-    let path = LOG_FOLDER_PATH.join(file_name);
+    let path = PLOTS_FOLDER_PATH.join(file_name);
 
     let backend = SVGBackend::new(&path, (1000, 1000)).into_drawing_area();
 
@@ -41,6 +41,7 @@ pub async fn plot_location_handler(
                 None => {
                     let file_path = LOG_FOLDER_PATH.join(location.path());
 
+                    info!("path: {}" , file_path.display());
                     match OpenOptions::new()
                         .append(true)
                         .write(true)
