@@ -60,6 +60,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
+    info!("Init");
 
     // To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
@@ -93,17 +94,24 @@ async fn main(spawner: Spawner) {
         .set_power_management(cyw43::PowerManagementMode::PowerSave)
         .await;
 
-    // let config = embassy_net::Config::dhcpv4(Default::default());
-    // Use static IP configuration instead of DHCP
-    let config = embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-        address: Ipv4Cidr::new(Ipv4Address::new(10, 0, 0, 225), 24),
-        dns_servers: Vec::from_slice(&[
-            Ipv4Addr::from_str("1.1.1.1").unwrap(),
-            Ipv4Addr::from_str("8.8.8.8").unwrap(),
-        ])
-        .unwrap(),
-        gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
-    });
+    // use a static ip if the environment variable is set, if not use DHCP
+    let config = match option_env!("STATIC_IP_ADDRESS") {
+        None => {
+            embassy_net::Config::dhcpv4(Default::default())
+        }
+        Some(ip_env) => {
+            let ip = Ipv4Address::from_str(ip_env).unwrap();
+            embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
+                address: Ipv4Cidr::new(ip, 24),
+                dns_servers: Vec::from_slice(&[
+                    Ipv4Addr::from_str("1.1.1.1").unwrap(),
+                    Ipv4Addr::from_str("8.8.8.8").unwrap(),
+                ])
+                    .unwrap(),
+                gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
+            })
+        }
+    };
 
     // network stack seed
     let seed = RoscRng::next_u32(&mut RoscRng);

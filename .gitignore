@@ -92,3 +92,5 @@ fabric.properties
 hardware/temp_sense_board/\#auto_saved_files\#
 hardware/temp_sense_board/~temp_sense_board.kicad_pcb.lck
 hardware/temp_sense_board/~temp_sense_board.kicad_sch.lck
+*.svg
+*.csv
