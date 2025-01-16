@@ -9,6 +9,7 @@ use core::str::FromStr;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::{Ipv4Address, Ipv4Cidr, Stack, StackResources};
@@ -96,9 +97,7 @@ async fn main(spawner: Spawner) {
 
     // use a static ip if the environment variable is set, if not use DHCP
     let config = match option_env!("STATIC_IP_ADDRESS") {
-        None => {
-            embassy_net::Config::dhcpv4(Default::default())
-        }
+        None => embassy_net::Config::dhcpv4(Default::default()),
         Some(ip_env) => {
             let ip = Ipv4Address::from_str(ip_env).unwrap();
             embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
@@ -107,7 +106,7 @@ async fn main(spawner: Spawner) {
                     Ipv4Addr::from_str("1.1.1.1").unwrap(),
                     Ipv4Addr::from_str("8.8.8.8").unwrap(),
                 ])
-                    .unwrap(),
+                .unwrap(),
                 gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
             })
         }
@@ -359,7 +358,19 @@ async fn process_readings_sht(
     let _ = sensor.get_reading().await;
     let _ = sensor.get_reading().await;
     loop {
-        handle_reading_to_webserver(&mut sensor, &options, stack).await;
+        match select(
+            handle_reading_to_webserver(&mut sensor, &options, stack),
+            Timer::after_secs(10),
+        )
+        .await
+        {
+            Either::First(_) => {}
+            Either::Second(_) => {
+                warn!("Triggering an MCU system reset because reading to web server took too long");
+                Timer::after_secs(1).await;
+                cortex_m::peripheral::SCB::sys_reset();
+            }
+        }
         ticker.next().await;
     }
 }
@@ -375,7 +386,19 @@ async fn process_readings_aht(
     let _ = sensor.get_reading().await;
     let _ = sensor.get_reading().await;
     loop {
-        handle_reading_to_webserver(&mut sensor, &options, stack).await;
+        match select(
+            handle_reading_to_webserver(&mut sensor, &options, stack),
+            Timer::after_secs(10),
+        )
+        .await
+        {
+            Either::First(_) => {}
+            Either::Second(_) => {
+                warn!("Triggering an MCU system reset because reading to web server took too long");
+                Timer::after_secs(1).await;
+                cortex_m::peripheral::SCB::sys_reset();
+            }
+        }
         ticker.next().await;
     }
 }
