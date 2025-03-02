@@ -2,19 +2,16 @@
 #![no_main]
 #![feature(impl_trait_in_assoc_type)]
 
-use core::future::Future;
 use core::net::Ipv4Addr;
 use core::num;
 use core::str::FromStr;
-use cyw43_pio::PioSpi;
+use cyw43::JoinOptions;
+use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::{Ipv4Address, Ipv4Cidr, Stack, StackResources};
-use embassy_rp::clocks::RoscRng;
-use embassy_rp::peripherals::DMA_CH0;
 use embassy_rp::pio::Pio;
 use embassy_rp::{
     bind_interrupts, gpio,
@@ -22,6 +19,7 @@ use embassy_rp::{
     peripherals::{I2C0, PIO0},
     Peripheral,
 };
+use embassy_rp::clocks::RoscRng;
 use embassy_time::{Duration, Ticker, Timer};
 use gpio::{Level, Output};
 use heapless::Vec;
@@ -31,6 +29,13 @@ use reqwless::client::HttpClient;
 use reqwless::request::Method;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
+use sensors::{TempHumidSensor, AHT20, SHT40};
+use crate::net_tasks::{cyw43_task, net_task};
+use crate::processing_readings::{process_readings_aht, process_readings_sht};
+
+mod net_tasks;
+mod sensors;
+mod processing_readings;
 
 bind_interrupts!(struct IrqsI2C {
     I2C0_IRQ => InterruptHandler<I2C0>;
@@ -45,18 +50,6 @@ pub static WIFI_PASSWORD: &str = env!("WIFI_PASSWORD_PICO");
 pub static READING_PERIOD: Option<&str> = option_env!("READING_PERIOD");
 pub static BASE_URL: &str = env!("BASE_URL");
 pub const FORMAT: u128 = lexical_core::format::STANDARD;
-
-#[embassy_executor::task]
-async fn cyw43_task(
-    runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
-) -> ! {
-    runner.run().await
-}
-
-#[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
-    runner.run().await
-}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -77,6 +70,7 @@ async fn main(spawner: Spawner) {
     let spi = PioSpi::new(
         &mut pio.common,
         pio.sm0,
+        DEFAULT_CLOCK_DIVIDER,
         pio.irq0,
         cs,
         p.PIN_24,
@@ -112,8 +106,12 @@ async fn main(spawner: Spawner) {
         }
     };
 
+    let mut rng = RoscRng;
+
     // network stack seed
-    let seed = RoscRng::next_u32(&mut RoscRng);
+    let seed = rng.next_u64();
+
+
 
     // network stack
     static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
@@ -127,7 +125,7 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(net_task(runner)));
 
     loop {
-        match control.join_wpa2(WIFI_NETWORK, WIFI_PASSWORD).await {
+        match control.join(WIFI_NETWORK, JoinOptions::new(WIFI_PASSWORD.as_bytes())).await {
             Ok(_) => break,
             Err(err) => {
                 info!("join failed with status={}", err.status);
@@ -200,206 +198,6 @@ async fn main(spawner: Spawner) {
                 defmt::panic!("Unable to find a sensor to use, panicking...");
             }
         },
-    }
-}
-
-pub struct SHT40<'a> {
-    i2c: I2c<'a, I2C0, i2c::Async>,
-    mode: SHT40Mode,
-}
-
-pub enum SHT40Mode {
-    NoHeatHighPrecision,
-    NoHeatMedPrecision,
-    NoHeatLowPrecision,
-    HighHeat1s,
-    HighHeat100ms,
-    MedHeat1s,
-    MedHeat100ms,
-    LowHeat1s,
-    LowHeat100ms,
-}
-
-impl SHT40Mode {
-    pub const fn to_byte(&self) -> u8 {
-        match self {
-            SHT40Mode::NoHeatHighPrecision => 0xfd,
-            SHT40Mode::NoHeatMedPrecision => 0xf6,
-            SHT40Mode::NoHeatLowPrecision => 0xe0,
-            SHT40Mode::HighHeat1s => 0x39,
-            SHT40Mode::HighHeat100ms => 0x32,
-            SHT40Mode::MedHeat1s => 0x2f,
-            SHT40Mode::MedHeat100ms => 0x24,
-            SHT40Mode::LowHeat1s => 0x1e,
-            SHT40Mode::LowHeat100ms => 0x15,
-        }
-    }
-
-    pub const fn get_delay(&self) -> Duration {
-        match self {
-            SHT40Mode::NoHeatHighPrecision => Duration::from_millis(10),
-            SHT40Mode::NoHeatMedPrecision => Duration::from_millis(5),
-            SHT40Mode::NoHeatLowPrecision => Duration::from_millis(2),
-            SHT40Mode::MedHeat1s | SHT40Mode::HighHeat1s | SHT40Mode::LowHeat1s => {
-                Duration::from_millis(1100)
-            }
-            SHT40Mode::MedHeat100ms | SHT40Mode::LowHeat100ms | SHT40Mode::HighHeat100ms => {
-                Duration::from_millis(110)
-            }
-        }
-    }
-}
-
-pub trait TempHumidSensor {
-    fn get_reading(&mut self) -> impl Future<Output = Reading> + Send;
-}
-
-impl TempHumidSensor for SHT40<'_> {
-    async fn get_reading(&mut self) -> Reading {
-        self.measurement().await
-    }
-}
-
-impl TempHumidSensor for AHT20<'_> {
-    async fn get_reading(&mut self) -> Reading {
-        self.get_reading().await
-    }
-}
-
-impl<'a> SHT40<'a> {
-    const SHT4X_DEFAULT_ADDR: u8 = 0x44;
-    const SHT4X_READSERIAL: u8 = 0x89;
-    const SHT4X_SOFTRESET: u8 = 0x94;
-
-    pub async fn new(i2c: I2c<'a, I2C0, i2c::Async>) -> Result<Self, i2c::Error> {
-        let mut sensor = Self {
-            i2c,
-            mode: SHT40Mode::NoHeatHighPrecision,
-        };
-
-        sensor.reset().await?;
-
-        Ok(sensor)
-    }
-
-    pub fn set_mode(&mut self, mode: SHT40Mode) {
-        self.mode = mode;
-    }
-
-    pub async fn reset(&mut self) -> Result<(), i2c::Error> {
-        self.i2c
-            .write_async(Self::SHT4X_DEFAULT_ADDR, [Self::SHT4X_SOFTRESET])
-            .await?;
-        Timer::after_millis(1).await;
-
-        Ok(())
-    }
-
-    pub async fn measurement(&mut self) -> Reading {
-        self.i2c
-            .write_async(Self::SHT4X_DEFAULT_ADDR, [self.mode.to_byte()])
-            .await
-            .unwrap();
-        Timer::after(self.mode.get_delay()).await;
-        let mut buf = [0u8; 6];
-        self.i2c
-            .read_async(Self::SHT4X_DEFAULT_ADDR, &mut buf)
-            .await
-            .unwrap();
-
-        let temp_data = &buf[0..2];
-        let humid_data = &buf[3..5];
-
-        let temperature = {
-            let temp = (temp_data[1] as u16 + ((temp_data[0] as u16) << 8)) as f32;
-
-            -45.0 + 175.0 * temp / 65535.0
-        };
-
-        let humidity = {
-            let temp = (humid_data[1] as u16 + ((temp_data[0] as u16) << 8)) as f32; // TODO: this might not be right, unsure as of now
-
-            (-6.0 + 125.0 * temp / 65535.0).clamp(0.0, 100.0)
-        };
-
-        Reading::new(temperature, humidity)
-    }
-
-    pub async fn serial_number(&mut self) -> u32 {
-        self.i2c
-            .write_async(Self::SHT4X_DEFAULT_ADDR, [Self::SHT4X_READSERIAL])
-            .await
-            .unwrap();
-        Timer::after_millis(10).await;
-        let mut buf = [0u8; 6];
-        self.i2c
-            .read_async(Self::SHT4X_DEFAULT_ADDR, &mut buf)
-            .await
-            .unwrap();
-        let ser1 = &buf[0..2];
-        let ser2 = &buf[3..5];
-
-        ((ser1[0] as u32) << 24)
-            + ((ser1[1] as u32) << 16)
-            + ((ser2[0] as u32) << 8)
-            + ser2[1] as u32
-    }
-}
-
-// TODO: there is code duplication in both of these tasks, but embassy does not support generics so we are stuck with this as of now, that's alright though!
-#[embassy_executor::task]
-async fn process_readings_sht(
-    mut sensor: SHT40<'static>,
-    stack: Stack<'static>,
-    options: Options,
-    mut ticker: Ticker,
-) {
-    // Read a few sensor values just to get them out of any buffers they may be present in
-    let _ = sensor.get_reading().await;
-    let _ = sensor.get_reading().await;
-    loop {
-        match select(
-            handle_reading_to_webserver(&mut sensor, &options, stack),
-            Timer::after_secs(10),
-        )
-        .await
-        {
-            Either::First(_) => {}
-            Either::Second(_) => {
-                warn!("Triggering an MCU system reset because reading to web server took too long");
-                Timer::after_secs(1).await;
-                cortex_m::peripheral::SCB::sys_reset();
-            }
-        }
-        ticker.next().await;
-    }
-}
-
-#[embassy_executor::task]
-async fn process_readings_aht(
-    mut sensor: AHT20<'static>,
-    stack: Stack<'static>,
-    options: Options,
-    mut ticker: Ticker,
-) {
-    // Read a few sensor values just to get them out of any buffers they may be present in
-    let _ = sensor.get_reading().await;
-    let _ = sensor.get_reading().await;
-    loop {
-        match select(
-            handle_reading_to_webserver(&mut sensor, &options, stack),
-            Timer::after_secs(10),
-        )
-        .await
-        {
-            Either::First(_) => {}
-            Either::Second(_) => {
-                warn!("Triggering an MCU system reset because reading to web server took too long");
-                Timer::after_secs(1).await;
-                cortex_m::peripheral::SCB::sys_reset();
-            }
-        }
-        ticker.next().await;
     }
 }
 
@@ -480,97 +278,3 @@ async fn handle_reading_to_webserver(
     info!("Reading: {:?}", reading);
 }
 
-pub struct AHT20<'a> {
-    i2c: I2c<'a, I2C0, i2c::Async>,
-}
-
-#[derive(Debug, Format)]
-pub struct Reading {
-    pub temperature: f32,
-    pub humidity: f32,
-}
-
-impl Reading {
-    pub fn new(temperature: f32, humidity: f32) -> Self {
-        Self {
-            temperature,
-            humidity,
-        }
-    }
-}
-
-impl<'a> AHT20<'a> {
-    const AHT20_I2CADDR: u8 = 0x38;
-    #[allow(dead_code)]
-    const AHT20_CMD_SOFTRESET: [u8; 1] = [0xBA];
-    const AHT20_CMD_INITIALIZE: [u8; 3] = [0xBE, 0x08, 0x00];
-    const AHT20_CMD_MEASURE: [u8; 3] = [0xAC, 0x33, 0x00];
-    #[allow(dead_code)]
-    const AHT20_STATUSBIT_BUSY: u8 = 7;
-    const AHT20_STATUSBIT_CALIBRATED: u8 = 3;
-
-    pub async fn new(i2c: I2c<'a, I2C0, i2c::Async>) -> Result<Self, i2c::Error> {
-        let mut new_sensor = Self { i2c };
-        // init command
-        new_sensor
-            .i2c
-            .write_async(Self::AHT20_I2CADDR, Self::AHT20_CMD_INITIALIZE)
-            .await?;
-
-        Timer::after_millis(80).await;
-
-        let mut buf: [u8; 1] = [0];
-        // read calibration bit
-        new_sensor
-            .i2c
-            .read_async(Self::AHT20_I2CADDR, &mut buf)
-            .await?;
-
-        // the true if calibrated
-        let _calibrated = buf[0] >> Self::AHT20_STATUSBIT_CALIBRATED & 1 == 1;
-
-        Timer::after_millis(80).await;
-
-        Ok(new_sensor)
-    }
-
-    pub async fn get_reading(&mut self) -> Reading {
-        Reading::new(self.get_temperature().await, self.get_humidity().await)
-    }
-
-    pub async fn get_temperature(&mut self) -> f32 {
-        self.i2c
-            .write_async(Self::AHT20_I2CADDR, Self::AHT20_CMD_MEASURE)
-            .await
-            .unwrap();
-
-        let mut buf: [u8; 7] = [0, 0, 0, 0, 0, 0, 0];
-
-        self.i2c
-            .read_async(Self::AHT20_I2CADDR, &mut buf)
-            .await
-            .unwrap();
-
-        let combined = (((buf[3] & 0xF) as u32) << 16) | ((buf[4] as u32) << 8) | buf[5] as u32;
-
-        combined as f32 / 2u32.pow(20) as f32 * 200.0 - 50.0
-    }
-
-    pub async fn get_humidity(&mut self) -> f32 {
-        self.i2c
-            .write_async(Self::AHT20_I2CADDR, Self::AHT20_CMD_MEASURE)
-            .await
-            .unwrap();
-
-        let mut buf: [u8; 7] = [0, 0, 0, 0, 0, 0, 0];
-
-        self.i2c
-            .read_async(Self::AHT20_I2CADDR, &mut buf)
-            .await
-            .unwrap();
-
-        let combined = ((buf[1] as u32) << 12) | ((buf[2] as u32) << 4) | ((buf[3] as u32) >> 4);
-
-        combined as f32 * 100.0 / 2u32.pow(20) as f32
-    }
-}
