@@ -9,6 +9,7 @@ use cyw43::JoinOptions;
 use cyw43_pio::{PioSpi, DEFAULT_CLOCK_DIVIDER};
 use defmt::*;
 use embassy_executor::Spawner;
+use embassy_futures::select::{select, Either};
 use embassy_net::dns::DnsSocket;
 use embassy_net::tcp::client::{TcpClient, TcpClientState};
 use embassy_net::{Ipv4Address, Ipv4Cidr, Stack, StackResources};
@@ -20,6 +21,7 @@ use embassy_rp::{
     Peripheral,
 };
 use embassy_rp::clocks::RoscRng;
+use embassy_rp::watchdog::Watchdog;
 use embassy_time::{Duration, Ticker, Timer};
 use gpio::{Level, Output};
 use heapless::Vec;
@@ -56,148 +58,164 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
     info!("Init");
 
-    // To make flashing faster for development, you may want to flash the firmwares independently
-    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs download cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
-    //     probe-rs download cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
-    let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
-    let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
-
-    // networking pins
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let mut pio = Pio::new(p.PIO0, IrqsWifi);
-    let spi = PioSpi::new(
-        &mut pio.common,
-        pio.sm0,
-        DEFAULT_CLOCK_DIVIDER,
-        pio.irq0,
-        cs,
-        p.PIN_24,
-        p.PIN_29,
-        p.DMA_CH0,
-    );
-
-    // network state objects and tasks
-    static STATE: StaticCell<cyw43::State> = StaticCell::new();
-    let state = STATE.init(cyw43::State::new());
-    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
-    unwrap!(spawner.spawn(cyw43_task(runner)));
-
-    control.init(clm).await;
-    control
-        .set_power_management(cyw43::PowerManagementMode::PowerSave)
-        .await;
-
-    // use a static ip if the environment variable is set, if not use DHCP
-    let config = match option_env!("STATIC_IP_ADDRESS") {
-        None => embassy_net::Config::dhcpv4(Default::default()),
-        Some(ip_env) => {
-            let ip = Ipv4Address::from_str(ip_env).unwrap();
-            embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
-                address: Ipv4Cidr::new(ip, 24),
-                dns_servers: Vec::from_slice(&[
-                    Ipv4Addr::from_str("1.1.1.1").unwrap(),
-                    Ipv4Addr::from_str("8.8.8.8").unwrap(),
-                ])
-                .unwrap(),
-                gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
-            })
-        }
-    };
-
-    let mut rng = RoscRng;
-
-    // network stack seed
-    let seed = rng.next_u64();
 
 
+    let setup = async {
 
-    // network stack
-    static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
-    let (stack, runner) = embassy_net::new(
-        net_device,
-        config,
-        RESOURCES.init(StackResources::new()),
-        seed as u64,
-    );
+        // To make flashing faster for development, you may want to flash the firmwares independently
+        // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
+        //     probe-rs download cyw43-firmware/43439A0.bin --binary-format bin --chip RP2040 --base-address 0x10100000
+        //     probe-rs download cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP2040 --base-address 0x10140000
+        let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
+        let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
-    unwrap!(spawner.spawn(net_task(runner)));
+        // networking pins
+        let pwr = Output::new(p.PIN_23, Level::Low);
+        let cs = Output::new(p.PIN_25, Level::High);
+        let mut pio = Pio::new(p.PIO0, IrqsWifi);
+        let spi = PioSpi::new(
+            &mut pio.common,
+            pio.sm0,
+            DEFAULT_CLOCK_DIVIDER,
+            pio.irq0,
+            cs,
+            p.PIN_24,
+            p.PIN_29,
+            p.DMA_CH0,
+        );
 
-    loop {
-        match control.join(WIFI_NETWORK, JoinOptions::new(WIFI_PASSWORD.as_bytes())).await {
-            Ok(_) => break,
-            Err(err) => {
-                info!("join failed with status={}", err.status);
+        // network state objects and tasks
+        static STATE: StaticCell<cyw43::State> = StaticCell::new();
+        let state = STATE.init(cyw43::State::new());
+        let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, fw).await;
+        unwrap!(spawner.spawn(cyw43_task(runner)));
+
+        control.init(clm).await;
+        control
+            .set_power_management(cyw43::PowerManagementMode::PowerSave)
+            .await;
+
+        // use a static ip if the environment variable is set, if not use DHCP
+        let config = match option_env!("STATIC_IP_ADDRESS") {
+            None => embassy_net::Config::dhcpv4(Default::default()),
+            Some(ip_env) => {
+                let ip = Ipv4Address::from_str(ip_env).unwrap();
+                embassy_net::Config::ipv4_static(embassy_net::StaticConfigV4 {
+                    address: Ipv4Cidr::new(ip, 24),
+                    dns_servers: Vec::from_slice(&[
+                        Ipv4Addr::from_str("1.1.1.1").unwrap(),
+                        Ipv4Addr::from_str("8.8.8.8").unwrap(),
+                    ])
+                        .unwrap(),
+                    gateway: Some(Ipv4Address::new(10, 0, 0, 1)),
+                })
+            }
+        };
+
+        let mut rng = RoscRng;
+
+        // network stack seed
+        let seed = rng.next_u64();
+
+        // network stack
+        static RESOURCES: StaticCell<StackResources<5>> = StaticCell::new();
+        let (stack, runner) = embassy_net::new(
+            net_device,
+            config,
+            RESOURCES.init(StackResources::new()),
+            seed as u64,
+        );
+
+        unwrap!(spawner.spawn(net_task(runner)));
+
+        loop {
+            match control.join(WIFI_NETWORK, JoinOptions::new(WIFI_PASSWORD.as_bytes())).await {
+                Ok(_) => break,
+                Err(err) => {
+                    info!("join failed with status={}", err.status);
+                }
             }
         }
-    }
 
-    info!("waiting for DHCP...");
-    while !stack.is_config_up() {
-        Timer::after_millis(100).await;
-    }
-    info!("DHCP is now up!");
+        info!("waiting for DHCP...");
+        while !stack.is_config_up() {
+            Timer::after_millis(100).await;
+        }
+        info!("DHCP is now up!");
 
-    info!("waiting for link up...");
-    while !stack.is_link_up() {
-        Timer::after_millis(500).await;
-    }
-    info!("Link is up!");
+        info!("waiting for link up...");
+        while !stack.is_link_up() {
+            Timer::after_millis(500).await;
+        }
+        info!("Link is up!");
 
-    info!("waiting for stack to be up...");
-    stack.wait_config_up().await;
-    info!("Stack is up!");
+        info!("waiting for stack to be up...");
+        stack.wait_config_up().await;
+        info!("Stack is up!");
 
-    info!("Base url: {}", BASE_URL);
+        info!("Base url: {}", BASE_URL);
 
-    let sensor_sht = SHT40::new(unsafe {
-        I2c::new_async(
-            p.I2C0.clone_unchecked(),
-            p.PIN_5.clone_unchecked(),
-            p.PIN_4.clone_unchecked(),
+        let sensor_sht = SHT40::new(unsafe {
+            I2c::new_async(
+                p.I2C0.clone_unchecked(),
+                p.PIN_5.clone_unchecked(),
+                p.PIN_4.clone_unchecked(),
+                IrqsI2C,
+                i2c::Config::default(),
+            )
+        });
+
+        let sensor = AHT20::new(I2c::new_async(
+            p.I2C0,
+            p.PIN_5,
+            p.PIN_4,
             IrqsI2C,
             i2c::Config::default(),
-        )
-    });
+        ))
+            .await;
 
-    let sensor = AHT20::new(I2c::new_async(
-        p.I2C0,
-        p.PIN_5,
-        p.PIN_4,
-        IrqsI2C,
-        i2c::Config::default(),
-    ))
-    .await;
+        let options = lexical_core::WriteFloatOptions::builder()
+            .inf_string(Some(b"Infinity"))
+            .nan_string(Some(b"NaN"))
+            .max_significant_digits(num::NonZeroUsize::new(4))
+            .trim_floats(true)
+            .build()
+            .unwrap();
 
-    let options = lexical_core::WriteFloatOptions::builder()
-        .inf_string(Some(b"Infinity"))
-        .nan_string(Some(b"NaN"))
-        .max_significant_digits(num::NonZeroUsize::new(4))
-        .trim_floats(true)
-        .build()
-        .unwrap();
+        let ticker = Ticker::every(Duration::from_secs(
+            READING_PERIOD.unwrap_or("60").parse().unwrap(),
+        ));
 
-    let ticker = Ticker::every(Duration::from_secs(
-        READING_PERIOD.unwrap_or("60").parse().unwrap(),
-    ));
+        (stack,options, ticker, sensor, sensor_sht)
+    };
 
-    // spawn the task that reads from the sensor, and then pushes that data to the web server
-    match sensor {
-        Ok(sensor) => {
-            info!("Found AHT20 sensor");
-            unwrap!(spawner.spawn(process_readings_aht(sensor, stack, options, ticker)));
+
+    // set a 30-second limit on the entire setup process and restart the device in the event it takes longer than 30 seconds
+    match select(Timer::after_secs(30), setup).await {
+        Either::First(_timer_end) => {
+            warn!("Triggering an MCU system reset because reading to web server took too long");
+            Timer::after_secs(1).await;
+            cortex_m::peripheral::SCB::sys_reset();
         }
-        Err(_) => match sensor_sht.await {
-            Ok(sensor) => {
-                info!("Found SHT40 sensor");
-                unwrap!(spawner.spawn(process_readings_sht(sensor, stack, options, ticker)));
+        Either::Second((stack,options,ticker,sensor,sensor_sht)) => {
+            // spawn the task that reads from the sensor, and then pushes that data to the web server
+            match sensor {
+                Ok(sensor) => {
+                    info!("Found AHT20 sensor");
+                    unwrap!(spawner.spawn(process_readings_aht(sensor, stack, options, ticker)));
+                }
+                Err(_) => match sensor_sht.await {
+                    Ok(sensor) => {
+                        info!("Found SHT40 sensor");
+                        unwrap!(spawner.spawn(process_readings_sht(sensor, stack, options, ticker)));
+                    }
+                    Err(err) => {
+                        error!("failed to find sensor: {}", err);
+                        defmt::panic!("Unable to find a sensor to use, panicking...");
+                    }
+                },
             }
-            Err(err) => {
-                error!("failed to find sensor: {}", err);
-                defmt::panic!("Unable to find a sensor to use, panicking...");
-            }
-        },
+        }
     }
 }
 
