@@ -1,7 +1,7 @@
 use crate::plotting_route::plot_location_handler;
 use crate::reading_route::reading_handler;
 use actix_web::http::StatusCode;
-use actix_web::web;
+use actix_web::{web, HttpResponse};
 use actix_web::HttpServer;
 use actix_web::{get, App, HttpResponseBuilder, Responder};
 use chrono::Local;
@@ -62,7 +62,9 @@ async fn main() -> std::io::Result<()> {
 async fn main_page(state: web::Data<TemperatureServerState>) -> impl Responder {
     let main_page_content = {
         let mut s = String::new();
-
+        s.push_str("<h1>All Sensors</h1>");
+        s.push_str("<table  style=\"border:1px solid black;\">");
+        s.push_str("<tr><th>Sensor Name</th><th>Last Modified</th></tr>");
         let lock = state.file_buf_list.lock().await;
 
         let location_info_list = lock
@@ -75,7 +77,7 @@ async fn main_page(state: web::Data<TemperatureServerState>) -> impl Responder {
                     .map(|time| time.format("%m/%d/%Y %I:%M:%S %p").to_string());
 
                 s.push_str(&format!(
-                    r###"<a href="{}">{}</a> Last modified: {}<br>"###,
+                    r###"<tr><td style="border:1px solid black;"><a href="{}">{}</a></td> <td style="border:1px solid black;">{}</td></tr>"###,
                     link,
                     location.as_str(),
                     time_modified.unwrap_or("Not modified".to_string())
@@ -83,8 +85,6 @@ async fn main_page(state: web::Data<TemperatureServerState>) -> impl Responder {
             })
             .collect::<Vec<_>>();
 
-        s.push_str("<br>");
-        s.push_str("<br>");
         s.push_str("<br>");
 
         location_info_list
@@ -102,7 +102,7 @@ async fn main_page(state: web::Data<TemperatureServerState>) -> impl Responder {
             })
             .for_each(|(location, location_info)| {
                 let mia_sensor_text = format!(
-                    "<b>MIA Sensor: {}, Last modified: {}</b><br>",
+                    "<b style=\"color:red; margin-bottom: 10px;\">MIA Sensor: {}, Last modified: {}</b><br>",
                     location.as_str(),
                     location_info
                         .get_last_modified()
@@ -112,13 +112,27 @@ async fn main_page(state: web::Data<TemperatureServerState>) -> impl Responder {
 
                 s.push_str(&mia_sensor_text);
             });
-
+        s.push_str("</table>");
         s
     };
 
     info!("{}", main_page_content);
 
-    HttpResponseBuilder::new(StatusCode::OK)
+    let mut resp = HttpResponseBuilder::new(StatusCode::OK)
         .content_type("text/html")
-        .body(main_page_content)
+        .body(format!(r###"<!DOCTYPE html>
+    <html>
+        <head>
+            <title>Overview</title>
+        </head>
+        <body style="background: darkgrey;">
+            {}
+        </body>
+    </html>"###, main_page_content));
+
+    resp
+
+
+
+
 }
